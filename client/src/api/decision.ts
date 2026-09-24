@@ -4,10 +4,10 @@ import type {
   CreateDecisionFeedbackRequest,
   CreateDecisionInviteRequest,
   DecisionCandidate,
+  DecisionGetResponse,
   DecisionInvitePreview,
   DecisionInviteWithToken,
   DecisionParticipant,
-  DecisionParticipantRosterEntry,
   DecisionParticipantSessionResponse,
   DecisionSelection,
   DecisionSession,
@@ -36,9 +36,7 @@ export const decisionApi = {
   list: () =>
     apiClient.get<{ decisions: DecisionSession[] }>('/decisions').then(r => r.data),
   get: (id: number | string) =>
-    apiClient
-      .get<{ decision: DecisionSession; participants: DecisionParticipantRosterEntry[] }>(`/decisions/${id}`)
-      .then(r => r.data),
+    apiClient.get<DecisionGetResponse>(`/decisions/${id}`).then(r => r.data),
   update: (id: number | string, data: UpdateDecisionRequest) =>
     apiClient.patch<{ decision: DecisionSession }>(`/decisions/${id}`, data).then(r => r.data),
   createInvite: (id: number | string, data: CreateDecisionInviteRequest = {}) =>

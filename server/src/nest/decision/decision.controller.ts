@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '../../types';
-import type { DecisionCandidate, DecisionParticipantRosterEntry, DecisionSession, RecommendationResult } from '@trek/shared';
+import type { DecisionCandidate, DecisionGetResponse, DecisionSession, RecommendationResult } from '@trek/shared';
 import { idParamSchema } from '@trek/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -62,17 +62,21 @@ export class DecisionController {
   }
 
   /**
-   * GET /api/decisions/:id — the session plus the host's participant roster.
-   * The roster is names + submitted flags only; individual contexts stay
-   * private to each participant's scoped token.
+   * GET /api/decisions/:id — the session, the host's participant roster, and
+   * any locked-in selection. The roster is names + submitted flags only;
+   * individual contexts stay private to each participant's scoped token.
    */
   @Get(':id')
-  get(@CurrentUser() user: User, @Param('id') id: string): { decision: DecisionSession; participants: DecisionParticipantRosterEntry[] } {
+  get(@CurrentUser() user: User, @Param('id') id: string): DecisionGetResponse {
     const sessionId = idParamSchema.safeParse(id);
     if (!sessionId.success) throw new HttpException({ error: 'Invalid id' }, 400);
     const decision = this.decisions.getForHost(sessionId.data, user.id);
     if (!decision) throw new HttpException({ error: 'Decision not found' }, 404);
-    return { decision, participants: this.decisions.listRoster(sessionId.data) };
+    return {
+      decision,
+      participants: this.decisions.listRoster(sessionId.data),
+      selection: this.decisions.getSelection(sessionId.data) ?? null,
+    };
   }
 
   /** PATCH /api/decisions/:id — mutable fields + host-driven lifecycle moves. */

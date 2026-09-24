@@ -60,8 +60,32 @@ describe('DecisionController', () => {
   });
 
   it('GET /api/decisions/:id returns the session for its host', () => {
-    const c = makeController({ getForHost: vi.fn().mockReturnValue(session()) });
-    expect(c.get(user, '2').decision.title).toBe('Tối nay đi đâu?');
+    const c = makeController({
+      getForHost: vi.fn().mockReturnValue(session()),
+      listRoster: vi.fn().mockReturnValue([{ id: 5, display_name: 'An', submitted_at: null }]),
+      getSelection: vi.fn().mockReturnValue(undefined),
+    });
+    const res = c.get(user, '2');
+    expect(res.decision.title).toBe('Tối nay đi đâu?');
+    expect(res.participants).toHaveLength(1);
+    expect(res.selection).toBeNull();
+  });
+
+  it('GET /api/decisions/:id includes the locked-in selection', () => {
+    const selection = {
+      id: 9,
+      decision_session_id: 2,
+      candidate_id: 5,
+      recommendation_run_id: 7,
+      selected_by_user_id: 1,
+      selected_at: '2026-09-24 09:00:00',
+    };
+    const c = makeController({
+      getForHost: vi.fn().mockReturnValue(session({ status: 'selected' })),
+      listRoster: vi.fn().mockReturnValue([]),
+      getSelection: vi.fn().mockReturnValue(selection),
+    });
+    expect(c.get(user, '2').selection?.candidate_id).toBe(5);
   });
 
   it('PATCH /api/decisions/:id rejects a bad id param before touching the service', () => {

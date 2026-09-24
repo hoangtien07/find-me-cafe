@@ -49,6 +49,12 @@ interface DecisionState {
   /** Last recommendation-ready run id — pages refetch when it changes. */
   pendingResultRunId: number | string | null
   selection: DecisionSelection | null
+  /**
+   * Bumped on every decision:* message handed to applyEvent — lets an
+   * in-flight REST snapshot (decisionRepo.open) detect that live events
+   * landed while it was fetching.
+   */
+  eventSeq: number
 
   reset: () => void
   /** Called by the data layer after the initial fetch wires the room. */
@@ -77,6 +83,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
   latestResult: null,
   pendingResultRunId: null,
   selection: null,
+  eventSeq: 0,
 
   reset: () =>
     set({
@@ -109,6 +116,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
   setSelection: selection => set({ selection }),
 
   applyEvent: msg => {
+    set(s => ({ eventSeq: s.eventSeq + 1 }))
     const { sessionId, session } = get()
     if (sessionId == null) return
     const sameRoom = (id: number | string | undefined) => id != null && String(id) === String(sessionId)

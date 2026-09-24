@@ -364,6 +364,15 @@ export const decisionFeedbackSchema = z.object({
 });
 export type DecisionFeedback = z.infer<typeof decisionFeedbackSchema>;
 
+/** GET /api/decisions/:id response — the room, its roster, and any locked-in selection. */
+export const decisionGetResponseSchema = z.object({
+  decision: decisionSessionSchema,
+  participants: z.array(decisionParticipantRosterEntrySchema),
+  /** The host's locked-in venue choice; null until the room reaches 'selected'. */
+  selection: decisionSelectionSchema.nullable(),
+});
+export type DecisionGetResponse = z.infer<typeof decisionGetResponseSchema>;
+
 // ── Request bodies ─────────────────────────────────────────────────────────
 
 export const createDecisionRequestSchema = z.object({
