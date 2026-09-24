@@ -5405,6 +5405,19 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_decision_events_session ON decision_events(decision_session_id);
       `);
     },
+    // DBs that created decision_participant_sessions before it had
+    // `revoked_at` carry the old column set; backfill it. Guarded because
+    // fresh installs already get the column from the CREATE TABLE above.
+    () => {
+      const hasRevokedAt = db
+        .prepare(
+          "SELECT 1 FROM pragma_table_info('decision_participant_sessions') WHERE name = 'revoked_at'",
+        )
+        .get();
+      if (!hasRevokedAt) {
+        db.exec('ALTER TABLE decision_participant_sessions ADD COLUMN revoked_at DATETIME');
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {
