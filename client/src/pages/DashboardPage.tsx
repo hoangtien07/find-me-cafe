@@ -19,6 +19,7 @@ import {
   Plus, Edit2, Trash2, Archive, ArchiveRestore, Copy, ArrowRight, MapPin,
   Plane, Hotel, Utensils, Clock, RefreshCw, ArrowRightLeft, Calendar,
   LayoutGrid, List, Ticket, X, CalendarPlus, ParkingSquare, LogIn, LogOut,
+  Coffee,
 } from 'lucide-react'
 import { IcsSubscribeModal } from '../components/Planner/IcsSubscribeModal'
 import CollectionsWidget from '../components/Dashboard/CollectionsWidget'
@@ -202,6 +203,17 @@ function DashboardPageDesktop(): React.ReactElement {
                     style={{ width: 38, height: 38, borderRadius: 11 }}
                   >
                     <CalendarPlus size={17} />
+                  </button>
+                  {/* "Chốt quán" — the group-decision room (place picker). */}
+                  <button
+                    type="button"
+                    className="tool-action"
+                    aria-label="Chốt quán"
+                    title="Chốt quán — chọn quán cà phê cho cả nhóm"
+                    onClick={() => navigate('/decision/new')}
+                    style={{ width: 38, height: 38, borderRadius: 11 }}
+                  >
+                    <Coffee size={17} />
                   </button>
                   <button type="button" className="tool-action" aria-label={t('dashboard.aria.toggleView')} onClick={toggleViewMode} style={{ width: 38, height: 38, borderRadius: 11 }}>
                     {viewMode === 'grid' ? <List size={17} /> : <LayoutGrid size={17} />}

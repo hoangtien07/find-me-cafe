@@ -504,7 +504,7 @@ export const decisionEventSchema = z.object({
   type: decisionEventTypeSchema,
   user_id: idSchema.nullable(),
   participant_id: idSchema.nullable(),
-  metadata: z.record(z.unknown()).nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
   created_at: z.string(),
 });
 export type DecisionEvent = z.infer<typeof decisionEventSchema>;
