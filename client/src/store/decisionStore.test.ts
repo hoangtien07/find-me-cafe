@@ -163,4 +163,14 @@ describe('decisionStore > applyEvent', () => {
     useDecisionStore.getState().openSession(session({ id: 3 }))
     expect(useDecisionStore.getState().participants).toHaveLength(1)
   })
+
+  it('FE-DEC-010 eventSeq marks every decision:* message reaching the store', () => {
+    const before = useDecisionStore.getState().eventSeq
+    // Even messages the room filter drops still count as "live traffic
+    // happened" — an in-flight snapshot refetches once rather than risk
+    // clobbering state it cannot see.
+    useDecisionStore.getState().applyEvent({ type: 'decision:participant-joined', participant: participant(1) })
+    useDecisionStore.getState().applyEvent({ type: 'decision:status-updated', decisionSessionId: 99, status: 'closed' })
+    expect(useDecisionStore.getState().eventSeq).toBe(before + 2)
+  })
 })

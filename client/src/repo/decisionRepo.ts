@@ -1,6 +1,6 @@
 import { decisionApi } from '../api/decision'
 import { useDecisionStore } from '../store/decisionStore'
-import type { CreateDecisionRequest } from '@trek/shared'
+import type { CreateDecisionRequest, RecommendationResult } from '@trek/shared'
 
 /**
  * Data layer for the decision room. Unlike the trip repos it never touches
@@ -8,20 +8,38 @@ import type { CreateDecisionRequest } from '@trek/shared'
  * contract, so the Zustand decisionStore is the single client copy and the
  * `decision:*` WS events keep it fresh (useDecisionRealtime).
  */
+
+/** One consistent snapshot of the room, tagged with the eventSeq it started at. */
+const fetchRoom = async (id: number | string) => {
+  const seq = useDecisionStore.getState().eventSeq
+  const res = await decisionApi.get(id)
+  const candidates = (await decisionApi.listCandidates(id)).candidates
+  let latestResult: RecommendationResult | null = null
+  try {
+    latestResult = await decisionApi.latest(id)
+  } catch { /* no completed run yet */ }
+  return { seq, ...res, candidates, latestResult }
+}
+
 export const decisionRepo = {
-  /** Load a room the caller hosts: session + roster + candidates + last run. */
+  /**
+   * Load a room the caller hosts: session + roster + candidates + last run.
+   * A decision:* event can land between the REST calls and the store writes —
+   * e.g. a participant joins while a reconnect re-pull is in flight. eventSeq
+   * marks live updates: if it moved during the fetch that snapshot is already
+   * stale, so pull once more. The freshest fetch wins either way — a coherent
+   * snapshot beats a half-populated store.
+   */
   async open(id: number | string) {
-    const { decision, participants } = await decisionApi.get(id)
+    let room = await fetchRoom(id)
+    if (useDecisionStore.getState().eventSeq !== room.seq) room = await fetchRoom(id)
     const s = useDecisionStore.getState()
-    s.openSession(decision)
-    s.setParticipants(participants)
-    s.setCandidates((await decisionApi.listCandidates(id)).candidates)
-    try {
-      s.setLatestResult(await decisionApi.latest(id))
-    } catch {
-      s.setLatestResult(null)
-    }
-    return decision
+    s.openSession(room.decision)
+    s.setParticipants(room.participants)
+    s.setCandidates(room.candidates)
+    s.setLatestResult(room.latestResult)
+    s.setSelection(room.selection)
+    return room.decision
   },
 
   async create(data: CreateDecisionRequest) {
