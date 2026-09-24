@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import crypto from 'node:crypto';
 import type {
+  DecisionConstraint,
   DecisionParticipant,
+  DecisionParticipantRosterEntry,
+  DecisionParticipantSessionResponse,
+  DecisionPreference,
   DecisionInvite,
   DecisionInvitePreview,
   DecisionSession,
@@ -298,6 +302,77 @@ export class DecisionService {
       'SELECT * FROM decision_participants WHERE id = ?',
       participantId,
     );
+  }
+
+  /**
+   * Resolve the scoped participant credential — unrevoked and unexpired. A bad
+   * token returns undefined, indistinguishable from one that never existed.
+   */
+  findParticipantByToken(token: string): DecisionParticipant | undefined {
+    const row = this.db.get<{ participant_id: number }>(
+      `SELECT participant_id FROM decision_participant_sessions
+        WHERE token_hash = ?
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`,
+      this.hashToken(token),
+    );
+    return row ? this.getParticipant(row.participant_id) : undefined;
+  }
+
+  /**
+   * GET /api/decision-participant/session — the room the participant joined,
+   * the roster projected to what strangers may see, and their own context
+   * (preferences + deal-breakers) for the intake form.
+   */
+  participantSessionView(participantId: number): DecisionParticipantSessionResponse | undefined {
+    const participant = this.getParticipant(participantId);
+    if (!participant) return undefined;
+    const decision = this.getSession(participant.decision_session_id);
+    if (!decision) return undefined;
+    const participants = this.db.all<DecisionParticipantRosterEntry>(
+      'SELECT id, display_name, submitted_at FROM decision_participants WHERE decision_session_id = ? ORDER BY created_at',
+      participant.decision_session_id,
+    );
+    const preferences = this.db
+      .all<Record<string, unknown>>(
+        'SELECT id, participant_id, key, value, weight, is_hard FROM decision_preferences WHERE participant_id = ? ORDER BY id',
+        participantId,
+      )
+      .map((p) => ({ ...p, is_hard: Boolean(p.is_hard) }) as DecisionPreference);
+    const dealBreakers = this.db
+      .all<Record<string, unknown>>(
+        'SELECT id, decision_session_id, participant_id, type, operator, value_json, is_hard FROM decision_constraints WHERE participant_id = ? ORDER BY id',
+        participantId,
+      )
+      .map(
+        (c) =>
+          ({
+            id: c.id,
+            decision_session_id: c.decision_session_id,
+            participant_id: c.participant_id,
+            type: c.type,
+            operator: c.operator,
+            value: typeof c.value_json === 'string' ? JSON.parse(c.value_json) : c.value_json,
+            is_hard: Boolean(c.is_hard),
+          }) as DecisionConstraint,
+      );
+    return { participant, decision, participants, preferences, deal_breakers: dealBreakers };
+  }
+
+  /**
+   * PUT /api/decision-participant/context — persist the intake, stamp
+   * submitted_at, and tell the room via the technical trip's WS room.
+   */
+  updateParticipantContext(
+    participantId: number,
+    sessionId: number,
+    ctx: UpdateParticipantContextRequest,
+  ): DecisionParticipant {
+    this.applyParticipantContext(participantId, sessionId, ctx);
+    const participant = this.getParticipant(participantId)!;
+    const session = this.getSession(sessionId);
+    if (session) this.broadcastParticipant(session.trip_id, participant, 'decision:participant-updated');
+    return participant;
   }
 
   /** Participants of a session (host view). */

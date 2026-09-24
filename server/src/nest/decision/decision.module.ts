@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { DecisionController } from './decision.controller';
 import { DecisionInviteController } from './decision-invite.controller';
+import { DecisionParticipantController } from './decision-participant.controller';
+import { DecisionParticipantGuard } from './decision-participant.guard';
 import { DecisionService } from './decision.service';
 
 /**
@@ -9,8 +11,8 @@ import { DecisionService } from './decision.service';
  * lifecycle. RealtimeService/DatabaseService come from their global modules.
  */
 @Module({
-  controllers: [DecisionController, DecisionInviteController],
-  providers: [DecisionService],
+  controllers: [DecisionController, DecisionInviteController, DecisionParticipantController],
+  providers: [DecisionService, DecisionParticipantGuard],
   exports: [DecisionService],
 })
 export class DecisionModule {}

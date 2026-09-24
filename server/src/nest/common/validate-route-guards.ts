@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CookieAuthGuard } from '../auth/cookie-auth.guard';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { ApiTokenGuard } from '../public-api/api-token.guard';
+import { DecisionParticipantGuard } from '../decision/decision-participant.guard';
 
 export interface RouteGuardEntry {
   /** `ControllerClass.methodName` */
@@ -22,7 +23,14 @@ export interface RouteGuardEntry {
  * no req.user, but they never resolve one, so they only ever appear behind one
  * of these three.
  */
-const AUTHENTICATING_GUARDS: unknown[] = [JwtAuthGuard, CookieAuthGuard, OptionalJwtGuard, ApiTokenGuard];
+const AUTHENTICATING_GUARDS: unknown[] = [
+  JwtAuthGuard,
+  CookieAuthGuard,
+  OptionalJwtGuard,
+  ApiTokenGuard,
+  // Resolves the anonymous decision participant from its scoped bearer token.
+  DecisionParticipantGuard,
+];
 
 /**
  * Boot-time gate: every registered route must be authenticated, or say why not.

@@ -236,6 +236,27 @@ export const decisionParticipantContextSchema = z.object({
 export type DecisionParticipantContext = z.infer<typeof decisionParticipantContextSchema>;
 
 /**
+ * A roster entry — who else is in the room, projected down to what a stranger
+ * may see. Origin coordinates, budgets and preferences stay off the wire.
+ */
+export const decisionParticipantRosterEntrySchema = z.object({
+  id: idSchema,
+  display_name: z.string(),
+  submitted_at: z.string().nullable(),
+});
+export type DecisionParticipantRosterEntry = z.infer<typeof decisionParticipantRosterEntrySchema>;
+
+/** GET /api/decision-participant/session — the room, the roster, and one's own context. */
+export const decisionParticipantSessionResponseSchema = z.object({
+  participant: decisionParticipantSchema,
+  decision: decisionSessionSchema,
+  participants: z.array(decisionParticipantRosterEntrySchema),
+  preferences: z.array(decisionPreferenceSchema),
+  deal_breakers: z.array(decisionConstraintSchema),
+});
+export type DecisionParticipantSessionResponse = z.infer<typeof decisionParticipantSessionResponseSchema>;
+
+/**
  * A candidate venue pinned to this session. `place_id` references the
  * trip-scoped TREK Place; `snapshot` preserves the evidence the resolver read.
  */

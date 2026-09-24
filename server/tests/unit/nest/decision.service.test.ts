@@ -161,4 +161,74 @@ describe('DecisionService', () => {
       expect(svc.joinByInvite(token, 'C')).toBeUndefined();
     });
   });
+
+  describe('participant surface', () => {
+    const joinRoom = (title = 'X') => {
+      const s = svc.create(1, { title });
+      const { token } = svc.createInvite(s.id, 1);
+      return { session: s, joined: svc.joinByInvite(token, 'An')! };
+    };
+
+    it('findParticipantByToken resolves a live participant and rejects bad/revoked tokens', () => {
+      const { joined } = joinRoom();
+      expect(svc.findParticipantByToken(joined.participant_token)?.id).toBe(joined.participant.id);
+      expect(svc.findParticipantByToken('bogus')).toBeUndefined();
+      testDb.prepare('UPDATE decision_participant_sessions SET revoked_at = CURRENT_TIMESTAMP').run();
+      expect(svc.findParticipantByToken(joined.participant_token)).toBeUndefined();
+    });
+
+    it('participantSessionView shows the room + roster without others\' private context', () => {
+      const { session, joined } = joinRoom('Tối nay đi đâu?');
+      const view = svc.participantSessionView(joined.participant.id)!;
+      expect(view.decision.title).toBe('Tối nay đi đâu?');
+      expect(view.participants).toEqual([{ id: joined.participant.id, display_name: 'An', submitted_at: null }]);
+      expect(view.preferences).toEqual([]);
+      expect(view.deal_breakers).toEqual([]);
+      void session;
+    });
+
+    it('updateParticipantContext persists the intake and broadcasts on the trip room', () => {
+      const { session, joined } = joinRoom();
+      const p = svc.updateParticipantContext(joined.participant.id, session.id, {
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        max_travel_minutes: 25,
+        budget_min: 30000,
+        budget_max: 80000,
+        preferences: [
+          { key: 'drink', value: 'coffee', weight: 2 },
+          { key: 'vibe', value: 'quiet', is_hard: true },
+        ],
+        deal_breakers: [{ type: 'veto_category', value: { category: 'bar' } }],
+      });
+      expect(p.origin_label).toBe('Q1');
+      expect(p.max_travel_minutes).toBe(25);
+      expect(p.submitted_at).toBeTruthy();
+      expect(broadcast).toHaveBeenCalledWith(
+        String(session.trip_id),
+        'decision:participant-updated',
+        { participant: expect.objectContaining({ id: p.id }) },
+        undefined,
+      );
+      const view = svc.participantSessionView(p.id)!;
+      expect(view.preferences).toHaveLength(2);
+      expect(view.preferences.find((x) => x.key === 'vibe')?.is_hard).toBe(true);
+      expect(view.deal_breakers).toHaveLength(1);
+      expect(view.deal_breakers[0]!.value).toEqual({ category: 'bar' });
+    });
+
+    it('re-submitting context replaces the preference/deal-breaker sets', () => {
+      const { session, joined } = joinRoom();
+      svc.updateParticipantContext(joined.participant.id, session.id, {
+        preferences: [{ key: 'drink', value: 'coffee' }],
+        deal_breakers: [{ type: 'veto_category', value: { category: 'bar' } }],
+      });
+      svc.updateParticipantContext(joined.participant.id, session.id, {
+        preferences: [{ key: 'drink', value: 'matcha' }],
+        deal_breakers: [],
+      });
+      const view = svc.participantSessionView(joined.participant.id)!;
+      expect(view.preferences).toEqual([expect.objectContaining({ value: 'matcha' })]);
+      expect(view.deal_breakers).toEqual([]);
+    });
+  });
 });

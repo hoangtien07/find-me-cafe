@@ -3,7 +3,7 @@
 // (`(req as AuthRequest).user`, `getRequest<Request & { user?: User }>()`) with
 // a single source of truth so downstream code can read `req.user` directly.
 
-import type { PublicApiGrant } from '@trek/shared';
+import type { DecisionParticipant, PublicApiGrant } from '@trek/shared';
 import type { User } from '../types';
 
 declare module 'express-serve-static-core' {
@@ -24,6 +24,13 @@ declare module 'express-serve-static-core' {
      * other auth path that happens to read the same object.
      */
     apiToken?: PublicApiGrant;
+    /**
+     * The anonymous decision-room participant resolved by
+     * `DecisionParticipantGuard` from its scoped bearer token. Deliberately
+     * NOT `user`: a participant is never a TREK account and never gets the
+     * global JWT surface.
+     */
+    decisionParticipant?: DecisionParticipant;
   }
 }
 
