@@ -7,6 +7,7 @@ import { DecisionService } from './decision.service';
 import { TravelMatrixService } from './travel/travel-matrix.service';
 import { MockTravelMatrixProvider } from './travel/mock-travel-matrix.provider';
 import { TRAVEL_MATRIX_PROVIDER } from './travel/travel-matrix.provider';
+import { DecisionResolverService } from './resolver/resolver.service';
 
 /**
  * Decision domain — the "pick a venue" group-decision room. The session is a
@@ -19,8 +20,9 @@ import { TRAVEL_MATRIX_PROVIDER } from './travel/travel-matrix.provider';
     DecisionService,
     DecisionParticipantGuard,
     TravelMatrixService,
+    DecisionResolverService,
     { provide: TRAVEL_MATRIX_PROVIDER, useClass: MockTravelMatrixProvider },
   ],
-  exports: [DecisionService, TravelMatrixService],
+  exports: [DecisionService, TravelMatrixService, DecisionResolverService],
 })
 export class DecisionModule {}

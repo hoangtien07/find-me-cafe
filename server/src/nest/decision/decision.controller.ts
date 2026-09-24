@@ -11,11 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '../../types';
-import type { DecisionCandidate, DecisionSession } from '@trek/shared';
+import type { DecisionCandidate, DecisionSession, RecommendationResult } from '@trek/shared';
 import { idParamSchema } from '@trek/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DecisionService } from './decision.service';
+import { DecisionResolverService } from './resolver/resolver.service';
 import { NotFoundError, ValidationError } from '../common/domain-errors';
 import {
   DecisionCreateDto,
@@ -37,7 +38,10 @@ import type { DecisionInviteWithToken } from '@trek/shared';
 @Controller('api/decisions')
 @UseGuards(JwtAuthGuard)
 export class DecisionController {
-  constructor(private readonly decisions: DecisionService) {}
+  constructor(
+    private readonly decisions: DecisionService,
+    private readonly resolver: DecisionResolverService,
+  ) {}
 
   /** POST /api/decisions — create a session + its technical trip container. */
   @Post()
@@ -145,6 +149,31 @@ export class DecisionController {
       this.throwMapped(e);
     }
     return { ok: true };
+  }
+
+  /**
+   * POST /api/decisions/:id/resolve — run resolver-v1: constraints → matrix →
+   * fairness → ranking → persist run + scores → 'resolved' → broadcast
+   * decision:recommendation-ready (content-free; clients refetch).
+   */
+  @Post(':id/resolve')
+  @HttpCode(200)
+  async resolve(@CurrentUser() user: User, @Param('id') id: string): Promise<RecommendationResult> {
+    const sessionId = this.requireHostedSession(user, id);
+    try {
+      return await this.resolver.resolve(sessionId);
+    } catch (e: unknown) {
+      this.throwMapped(e);
+    }
+  }
+
+  /** GET /api/decisions/:id/recommendations/latest — the latest completed run. */
+  @Get(':id/recommendations/latest')
+  latest(@CurrentUser() user: User, @Param('id') id: string): RecommendationResult {
+    const sessionId = this.requireHostedSession(user, id);
+    const result = this.resolver.latestResult(sessionId);
+    if (!result) throw new HttpException({ error: 'No completed run' }, 404);
+    return result;
   }
 
   /** The session id when `id` parses and `user` hosts it; the shared 400/404. */

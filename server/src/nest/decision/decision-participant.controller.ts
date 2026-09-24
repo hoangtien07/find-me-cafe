@@ -7,8 +7,9 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse } from '@trek/shared';
+import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse, RecommendationResult } from '@trek/shared';
 import { DecisionService } from './decision.service';
+import { DecisionResolverService } from './resolver/resolver.service';
 import { DecisionParticipantGuard } from './decision-participant.guard';
 import { CurrentParticipant } from './current-participant.decorator';
 import { DecisionParticipantContextDto } from './decision.dto';
@@ -25,7 +26,10 @@ import { DecisionParticipantContextDto } from './decision.dto';
 @UseGuards(DecisionParticipantGuard)
 @Controller('api/decision-participant')
 export class DecisionParticipantController {
-  constructor(private readonly decisions: DecisionService) {}
+  constructor(
+    private readonly decisions: DecisionService,
+    private readonly resolver: DecisionResolverService,
+  ) {}
 
   /** GET /api/decision-participant/session — the room, the roster, own context. */
   @Get('session')
@@ -53,5 +57,13 @@ export class DecisionParticipantController {
   @Get('candidates')
   candidates(@CurrentParticipant() p: DecisionParticipant): { candidates: DecisionCandidate[] } {
     return { candidates: this.decisions.listCandidates(p.decision_session_id) };
+  }
+
+  /** GET /api/decision-participant/result — the latest recommendation for their room. */
+  @Get('result')
+  result(@CurrentParticipant() p: DecisionParticipant): RecommendationResult {
+    const result = this.resolver.latestResult(p.decision_session_id);
+    if (!result) throw new HttpException({ error: 'No completed run' }, 404);
+    return result;
   }
 }
