@@ -47,6 +47,7 @@ export * from './collection/collection.schema';
 export * from './collection/collection-file.schema';
 export * from './trip/trip.schema';
 export * from './trip-invite/trip-invite.schema';
+export * from './decision';
 export * from './collab/collab.schema';
 export * from './file/file.schema';
 export * from './journey/journey.schema';

@@ -91,6 +91,16 @@ export const HANDLED_OUTSIDE_TRIP_STORE = [
   'import:progress',
   'import:done',
   'import:error',
+  // Decision room — hooks/useDecisionRealtime ('decision:' prefix listener)
+  // applies them onto store/decisionStore. Only the host's trip-room socket
+  // receives these; anonymous participants never hold a socket (spec §9).
+  'decision:participant-joined',
+  'decision:participant-updated',
+  'decision:candidate-added',
+  'decision:candidate-removed',
+  'decision:status-updated',
+  'decision:recommendation-ready',
+  'decision:selected',
 ] as const satisfies readonly TrekWsEventName[]
 
 /**
