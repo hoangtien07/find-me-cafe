@@ -23,6 +23,8 @@ import {
   DecisionUpdateDto,
   DecisionInviteCreateDto,
   DecisionCandidateAddDto,
+  DecisionSelectDto,
+  DecisionFeedbackDto,
 } from './decision.dto';
 import type { DecisionInviteWithToken } from '@trek/shared';
 
@@ -174,6 +176,33 @@ export class DecisionController {
     const result = this.resolver.latestResult(sessionId);
     if (!result) throw new HttpException({ error: 'No completed run' }, 404);
     return result;
+  }
+
+  /**
+   * POST /api/decisions/:id/select — the host locks in the group's venue.
+   * Replaces any prior selection; requires status resolved/selected.
+   */
+  @Post(':id/select')
+  @HttpCode(200)
+  select(@CurrentUser() user: User, @Param('id') id: string, @Body() body: DecisionSelectDto) {
+    const sessionId = this.requireHostedSession(user, id);
+    try {
+      return { selection: this.decisions.select(sessionId, body.candidate_id, user.id) };
+    } catch (e: unknown) {
+      this.throwMapped(e);
+    }
+  }
+
+  /** POST /api/decisions/:id/feedback — the host's own post-outing feedback. */
+  @Post(':id/feedback')
+  @HttpCode(201)
+  addFeedback(@CurrentUser() user: User, @Param('id') id: string, @Body() body: DecisionFeedbackDto) {
+    const sessionId = this.requireHostedSession(user, id);
+    try {
+      return { feedback: this.decisions.addFeedback(sessionId, body, null) };
+    } catch (e: unknown) {
+      this.throwMapped(e);
+    }
   }
 
   /** The session id when `id` parses and `user` hosts it; the shared 400/404. */

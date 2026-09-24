@@ -6,6 +6,8 @@ import {
   joinDecisionRequestSchema,
   updateParticipantContextRequestSchema,
   addDecisionCandidateRequestSchema,
+  selectDecisionRequestSchema,
+  createDecisionFeedbackRequestSchema,
 } from '@trek/shared';
 
 /**
@@ -20,3 +22,5 @@ export class DecisionInviteCreateDto extends createZodDto(createDecisionInviteRe
 export class DecisionJoinDto extends createZodDto(joinDecisionRequestSchema) {}
 export class DecisionParticipantContextDto extends createZodDto(updateParticipantContextRequestSchema) {}
 export class DecisionCandidateAddDto extends createZodDto(addDecisionCandidateRequestSchema) {}
+export class DecisionSelectDto extends createZodDto(selectDecisionRequestSchema) {}
+export class DecisionFeedbackDto extends createZodDto(createDecisionFeedbackRequestSchema) {}

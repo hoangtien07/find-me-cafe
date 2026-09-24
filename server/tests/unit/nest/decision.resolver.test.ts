@@ -144,4 +144,46 @@ describe('DecisionResolverService', () => {
     decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
     await expect(resolver.resolve(s.id)).rejects.toThrow('No participants');
   });
+
+  it('select locks a venue: one row, linked run, status selected, both broadcasts', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    const pid = addPlace(s.trip_id, 'Cafe A', 10.775, 106.7);
+    const cand = decisions.addCandidate(s.id, pid, { type: 'host', id: 1 });
+    joinWithOrigin(s.id, 'An', 10.77, 106.69);
+    await resolver.resolve(s.id);
+    const sel = decisions.select(s.id, cand.id, 1);
+    expect(sel.candidate_id).toBe(cand.id);
+    expect(sel.recommendation_run_id).toBe(resolver.latestResult(s.id)!.run.id);
+    expect(decisions.getSession(s.id)!.status).toBe('selected');
+    expect(broadcast).toHaveBeenCalledWith(String(s.trip_id), 'decision:selected', {
+      decisionSessionId: s.id,
+      selection: expect.objectContaining({ candidate_id: cand.id }),
+    });
+    // Re-selecting replaces the single row.
+    const pid2 = addPlace(s.trip_id, 'Cafe B', 10.78, 106.71);
+    const cand2 = decisions.addCandidate(s.id, pid2, { type: 'host', id: 1 });
+    const sel2 = decisions.select(s.id, cand2.id, 1);
+    expect(sel2.candidate_id).toBe(cand2.id);
+    expect(testDb.prepare('SELECT COUNT(*) n FROM decision_selections WHERE decision_session_id = ?').get(s.id)).toEqual({ n: 1 });
+  });
+
+  it('select refuses before a resolve and on foreign candidates', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    const cand = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
+    expect(() => decisions.select(s.id, cand.id, 1)).toThrow(/resolve first/);
+    joinWithOrigin(s.id, 'An', 10.77, 106.69);
+    await resolver.resolve(s.id);
+    expect(() => decisions.select(s.id, 999, 1)).toThrow('Candidate not found');
+  });
+
+  it('feedback records the learnable row with a wire boolean', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    const cand = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
+    const fb = decisions.addFeedback(s.id, { candidate_id: cand.id, fit_score: 4, would_choose_again: true }, null);
+    expect(fb.fit_score).toBe(4);
+    expect(fb.would_choose_again).toBe(true);
+    expect(() =>
+      decisions.addFeedback(s.id, { candidate_id: 999, fit_score: 3, would_choose_again: false }, null),
+    ).toThrow('Candidate not found');
+  });
 });
