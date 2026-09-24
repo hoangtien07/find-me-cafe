@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { HttpException } from '@nestjs/common';
 import { DecisionController } from '../../../src/nest/decision/decision.controller';
 import type { DecisionService } from '../../../src/nest/decision/decision.service';
+import type { DecisionResolverService } from '../../../src/nest/decision/resolver/resolver.service';
+import type { DecisionTelemetryService } from '../../../src/nest/decision/decision-telemetry.service';
 import { NotFoundError, ValidationError } from '../../../src/nest/common/domain-errors';
 import type { User } from '../../../src/types';
 import type { DecisionSession } from '@trek/shared';
@@ -24,7 +26,11 @@ const session = (over: Partial<DecisionSession> = {}): DecisionSession => ({
 });
 
 function makeController(svc: Partial<DecisionService>) {
-  return new DecisionController(svc as DecisionService);
+  return new DecisionController(
+    svc as DecisionService,
+    {} as DecisionResolverService,
+    {} as DecisionTelemetryService,
+  );
 }
 
 function thrown(fn: () => unknown): { status: number; body: unknown } {

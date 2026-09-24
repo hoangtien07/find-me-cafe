@@ -57,106 +57,121 @@ export class DecisionResolverService {
     // Resolve happens inside 'resolving' so a watcher sees the transition.
     this.telemetry.track(sessionId, 'resolve_started', {}, { candidates: candidates.length, participants: participants.length });
     this.setStatus(session, 'resolving');
-    const estimates = await this.matrix.computeSessionMatrix(sessionId, session.travel_mode, true);
+    let runId: number | null = null;
+    try {
+      const estimates = await this.matrix.computeSessionMatrix(sessionId, session.travel_mode, true);
 
-    const inputHash = crypto
-      .createHash('sha256')
-      .update(
-        JSON.stringify({
-          v: RESOLVER_V1_STRATEGY,
-          participants: participants.map((p) => ({
-            id: p.participant.id,
-            o: [p.participant.origin_lat, p.participant.origin_lng],
-            m: p.participant.max_travel_minutes,
-            b: [p.participant.budget_min, p.participant.budget_max],
-            prefs: p.preferences,
-            dbs: p.dealBreakers,
-          })),
-          candidates: candidates.map((c) => [c.id, c.snapshot]),
-          estimates: estimates.map((e) => [e.participant_id, e.candidate_id, e.travel_mode, e.duration_seconds, e.status]),
-        }),
-      )
-      .digest('hex');
-
-    const runId = this.db.transaction((conn) => {
-      const res = conn
-        .prepare(
-          "INSERT INTO recommendation_runs (decision_session_id, strategy_version, status, input_hash) VALUES (?, ?, 'running', ?)",
+      const inputHash = crypto
+        .createHash('sha256')
+        .update(
+          JSON.stringify({
+            v: RESOLVER_V1_STRATEGY,
+            participants: participants.map((p) => ({
+              id: p.participant.id,
+              o: [p.participant.origin_lat, p.participant.origin_lng],
+              m: p.participant.max_travel_minutes,
+              b: [p.participant.budget_min, p.participant.budget_max],
+              prefs: p.preferences,
+              dbs: p.dealBreakers,
+            })),
+            candidates: candidates.map((c) => [c.id, c.snapshot]),
+            estimates: estimates.map((e) => [e.participant_id, e.candidate_id, e.travel_mode, e.duration_seconds, e.status]),
+          }),
         )
-        .run(sessionId, RESOLVER_V1_STRATEGY, inputHash);
-      return Number(res.lastInsertRowid);
-    });
+        .digest('hex');
 
-    const byCandidate = new Map<number, Map<number, DecisionTravelEstimate | null>>();
-    for (const c of candidates) byCandidate.set(c.id, new Map());
-    for (const e of estimates) byCandidate.get(e.candidate_id)?.set(e.participant_id, e);
-
-    const evaluated: {
-      candidate: (typeof candidates)[number];
-      est: Map<number, DecisionTravelEstimate | null>;
-      constraint: ReturnType<typeof evaluateConstraints>;
-      fairness: ReturnType<typeof computeFairness>;
-      scores: ReturnType<typeof scoreCandidate>;
-      explanation?: DecisionExplanation;
-      rank?: number;
-    }[] = candidates.map((candidate) => {
-      const est = byCandidate.get(candidate.id)!;
-      const constraint = evaluateConstraints({ candidate, session, participants, estimateByParticipant: est });
-      const fairness = computeFairness({ participants, estimateByParticipant: est });
-      const scores = scoreCandidate({ candidate, participants, fairnessScore: fairness.score });
-      return { candidate, est, constraint, fairness, scores };
-    });
-
-    // Rank: eligible first by total score, then ineligible (kept for the
-    // "why not" story). Ranks are 1-based across the whole candidate set.
-    const ranked = [...evaluated].sort((a, b) => {
-      if (a.constraint.eligible !== b.constraint.eligible) return a.constraint.eligible ? -1 : 1;
-      return b.scores.totalScore - a.scores.totalScore;
-    });
-    ranked.forEach((e, i) => {
-      const rank = i + 1;
-      const explanation = explainCandidate({
-        candidate: e.candidate,
-        participants,
-        estimateByParticipant: e.est,
-        metrics: e.fairness.metrics,
-        unknowns: e.constraint.unknowns,
-        scores: e.scores,
+      runId = this.db.transaction((conn) => {
+        const res = conn
+          .prepare(
+            "INSERT INTO recommendation_runs (decision_session_id, strategy_version, status, input_hash) VALUES (?, ?, 'running', ?)",
+          )
+          .run(sessionId, RESOLVER_V1_STRATEGY, inputHash);
+        return Number(res.lastInsertRowid);
       });
-      e.explanation = explanation;
-      e.rank = rank;
-    });
 
-    this.db.transaction((conn) => {
-      const ins = conn.prepare(
-        `INSERT INTO recommendation_scores
-           (recommendation_run_id, candidate_id, eligible, constraint_result_json,
-            place_fit, group_fit, travel_fairness, context_fit, trust_score, total_score, rank, explanation_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      );
-      for (const e of ranked) {
-        ins.run(
+      const byCandidate = new Map<number, Map<number, DecisionTravelEstimate | null>>();
+      for (const c of candidates) byCandidate.set(c.id, new Map());
+      for (const e of estimates) byCandidate.get(e.candidate_id)?.set(e.participant_id, e);
+
+      const evaluated: {
+        candidate: (typeof candidates)[number];
+        est: Map<number, DecisionTravelEstimate | null>;
+        constraint: ReturnType<typeof evaluateConstraints>;
+        fairness: ReturnType<typeof computeFairness>;
+        scores: ReturnType<typeof scoreCandidate>;
+        explanation?: DecisionExplanation;
+        rank?: number;
+      }[] = candidates.map((candidate) => {
+        const est = byCandidate.get(candidate.id)!;
+        const constraint = evaluateConstraints({ candidate, session, participants, estimateByParticipant: est });
+        const fairness = computeFairness({ participants, estimateByParticipant: est });
+        const scores = scoreCandidate({ candidate, participants, fairnessScore: fairness.score });
+        return { candidate, est, constraint, fairness, scores };
+      });
+
+      // Rank: eligible first by total score, then ineligible (kept for the
+      // "why not" story). Ranks are 1-based across the whole candidate set.
+      const ranked = [...evaluated].sort((a, b) => {
+        if (a.constraint.eligible !== b.constraint.eligible) return a.constraint.eligible ? -1 : 1;
+        return b.scores.totalScore - a.scores.totalScore;
+      });
+      ranked.forEach((e, i) => {
+        const rank = i + 1;
+        const explanation = explainCandidate({
+          candidate: e.candidate,
+          participants,
+          estimateByParticipant: e.est,
+          metrics: e.fairness.metrics,
+          unknowns: e.constraint.unknowns,
+          scores: e.scores,
+        });
+        e.explanation = explanation;
+        e.rank = rank;
+      });
+
+      this.db.transaction((conn) => {
+        const ins = conn.prepare(
+          `INSERT INTO recommendation_scores
+             (recommendation_run_id, candidate_id, eligible, constraint_result_json,
+              place_fit, group_fit, travel_fairness, context_fit, trust_score, total_score, rank, explanation_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        for (const e of ranked) {
+          ins.run(
+            runId,
+            e.candidate.id,
+            e.constraint.eligible ? 1 : 0,
+            JSON.stringify({ eligible: e.constraint.eligible, violations: e.constraint.violations, unknowns: e.constraint.unknowns }),
+            e.scores.placeFit,
+            e.scores.groupFit,
+            e.scores.travelFairness,
+            e.scores.contextFit,
+            e.scores.trustScore,
+            e.scores.totalScore,
+            e.rank,
+            JSON.stringify(e.explanation),
+          );
+        }
+        conn
+          .prepare("UPDATE recommendation_runs SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?")
+          .run(runId);
+        conn
+          .prepare("UPDATE decision_sessions SET status = 'resolved', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+          .run(sessionId);
+      });
+    } catch (err) {
+      // 'resolving' is not resolvable — without this rollback a failed attempt
+      // leaves the room permanently refusing retries.
+      if (runId !== null) {
+        this.db.run(
+          "UPDATE recommendation_runs SET status = 'failed', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
           runId,
-          e.candidate.id,
-          e.constraint.eligible ? 1 : 0,
-          JSON.stringify({ eligible: e.constraint.eligible, violations: e.constraint.violations, unknowns: e.constraint.unknowns }),
-          e.scores.placeFit,
-          e.scores.groupFit,
-          e.scores.travelFairness,
-          e.scores.contextFit,
-          e.scores.trustScore,
-          e.scores.totalScore,
-          e.rank,
-          JSON.stringify(e.explanation),
         );
       }
-      conn
-        .prepare("UPDATE recommendation_runs SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .run(runId);
-      conn
-        .prepare("UPDATE decision_sessions SET status = 'resolved', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .run(sessionId);
-    });
+      this.setStatus(session, session.status);
+      this.telemetry.track(sessionId, 'resolve_failed', {}, { error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
 
     this.setStatus({ ...session, status: 'resolved' }, 'resolved');
     this.telemetry.track(sessionId, 'resolve_completed', {}, { runId, candidates: candidates.length });

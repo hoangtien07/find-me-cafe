@@ -62,7 +62,7 @@ export const DECISION_RESOLVER_V1 = 'resolver-v1' as const;
  * cannot verify is reported in `unknowns`, never smuggled into `eligible`.
  */
 export const decisionConstraintFindingSchema = z.object({
-  code: nonEmptyString,
+  type: nonEmptyString,
   detail: z.string().optional(),
   participant_id: idSchema.nullish(),
 });
@@ -499,6 +499,7 @@ export const DECISION_EVENT_TYPES = [
   'candidate_added',
   'resolve_started',
   'resolve_completed',
+  'resolve_failed',
   'recommendation_viewed',
   'venue_selected',
   'navigation_opened',
