@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { decisionApi } from '../../api/decision'
 import { decisionRepo } from '../../repo/decisionRepo'
+import { joinTrip, leaveTrip } from '../../api/websocket'
 import { placeRepo } from '../../repo/placeRepo'
 import { useDecisionStore } from '../../store/decisionStore'
 import { useDecisionRealtime } from '../../hooks/useDecisionRealtime'
@@ -34,24 +35,37 @@ export function useDecisionPage() {
 
   useDecisionRealtime()
 
+  // /decision/new gives sessionId=NaN; NaN !== NaN would re-fire the effect on
+  // every render, so the one-shot create is guarded by a ref.
+  const createStarted = useRef(false)
+
   useEffect(() => {
     let cancelled = false
     setIsLoading(true)
     if (creating) {
       // "New room" shortcut: create a fresh session (default title, editable
       // via PATCH later), then swap to the real room URL.
+      if (createStarted.current) return
+      createStarted.current = true
+      // No `cancelled` gate here: StrictMode's first effect cleanup flips it
+      // before the create resolves, which would strand the page on the spinner.
       decisionRepo
         .create({ title: 'Chốt quán' })
-        .then(d => !cancelled && navigate(`/decision/${d.id}`, { replace: true }))
-        .catch(() => !cancelled && navigate('/dashboard'))
+        .then(d => navigate(`/decision/${d.id}`, { replace: true }))
+        .catch(() => navigate('/dashboard'))
       return () => {
         cancelled = true
       }
     }
+    let joinedTripId: number | string | null = null
     decisionRepo
       .open(sessionId)
       .then(async decision => {
         if (cancelled) return
+        // decision:* events ride the session's technical trip room — join it
+        // like a trip page would, or no broadcast ever reaches the store.
+        joinedTripId = decision.trip_id
+        joinTrip(decision.trip_id)
         setTripPlaces((await placeRepo.list(decision.trip_id)).places)
       })
       .catch(() => {
@@ -62,6 +76,7 @@ export function useDecisionPage() {
       })
     return () => {
       cancelled = true
+      if (joinedTripId != null) leaveTrip(joinedTripId)
       reset()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

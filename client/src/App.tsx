@@ -497,15 +497,8 @@ export default function App() {
             }
           />
           {/* Host's decision room ("chốt quán") — spec §19 host surface.
-              /new creates a session then lands on the real id. */}
-          <Route
-            path="/decision/new"
-            element={
-              <ProtectedRoute>
-                <DecisionPage />
-              </ProtectedRoute>
-            }
-          />
+              /decision/new hits the same route with id='new': the hook creates
+              a session then replaces the URL with the real id. */}
           <Route
             path="/decision/:id"
             element={
