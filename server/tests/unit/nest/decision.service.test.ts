@@ -93,4 +93,72 @@ describe('DecisionService', () => {
   it('update throws NotFoundError for a missing session', () => {
     expect(() => svc.update(999, { title: 'x' })).toThrow(NotFoundError);
   });
+
+  describe('invite boundary', () => {
+    it('createInvite returns the token once; the DB keeps only its SHA-256', () => {
+      const s = svc.create(1, { title: 'X' });
+      const { token, ...invite } = svc.createInvite(s.id, 1, 7);
+      expect(token.length).toBeGreaterThan(20);
+      const row = testDb.prepare('SELECT token_hash, expires_at FROM decision_invites WHERE id = ?').get(invite.id) as Record<string, unknown>;
+      // SHA-256 hex, never the plaintext token.
+      expect(row.token_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(row.token_hash).not.toBe(token);
+      expect(row.expires_at).toBeTruthy();
+    });
+
+    it('previewInvite shows the outing without revealing participants', () => {
+      const s = svc.create(1, { title: 'Tối nay đi đâu?', occasion: 'hangout' });
+      const { token } = svc.createInvite(s.id, 1);
+      const preview = svc.previewInvite(token)!;
+      expect(preview.title).toBe('Tối nay đi đâu?');
+      expect(preview.occasion).toBe('hangout');
+      expect(preview.participant_count).toBe(0);
+      expect('participants' in preview).toBe(false);
+      expect(svc.previewInvite('bogus-token')).toBeUndefined();
+    });
+
+    it('joinByInvite mints a participant + scoped hashed token', () => {
+      const s = svc.create(1, { title: 'X' });
+      const { token } = svc.createInvite(s.id, 1);
+      const joined = svc.joinByInvite(token, 'An')!;
+      expect(joined.participant.display_name).toBe('An');
+      expect(joined.participant_token).toBeTruthy();
+      const ps = testDb.prepare('SELECT token_hash FROM decision_participant_sessions WHERE participant_id = ?').get(joined.participant.id) as Record<string, unknown>;
+      expect(ps.token_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(ps.token_hash).not.toBe(joined.participant_token);
+      // Broadcast on the technical trip's room.
+      expect(broadcast).toHaveBeenCalledWith(String(s.trip_id), 'decision:participant-joined', { participant: expect.objectContaining({ id: joined.participant.id }) }, undefined);
+    });
+
+    it('joinByInvite applies an inline context', () => {
+      const s = svc.create(1, { title: 'X' });
+      const { token } = svc.createInvite(s.id, 1);
+      const joined = svc.joinByInvite(token, 'An', {
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        max_travel_minutes: 30,
+        budget_max: 100000,
+        preferences: [{ key: 'drink', value: 'coffee' }],
+        deal_breakers: [{ type: 'veto_category', value: { category: 'bar' } }],
+      })!;
+      const p = joined.participant;
+      expect(p.origin_label).toBe('Q1');
+      expect(p.max_travel_minutes).toBe(30);
+      expect(p.submitted_at).toBeTruthy();
+      expect(testDb.prepare('SELECT COUNT(*) n FROM decision_preferences WHERE participant_id = ?').get(p.id)).toEqual({ n: 1 });
+      expect(testDb.prepare('SELECT is_hard FROM decision_constraints WHERE participant_id = ?').get(p.id)).toEqual({ is_hard: 1 });
+    });
+
+    it('joinByInvite refuses a join on a closed/expired invite or resolved session', () => {
+      const s = svc.create(1, { title: 'X' });
+      const { token } = svc.createInvite(s.id, 1);
+      svc.update(s.id, { status: 'ready' });
+      expect(svc.joinByInvite(token, 'An')).toBeTruthy();
+      // Resolved sessions are not joinable.
+      testDb.prepare("UPDATE decision_sessions SET status = 'resolved' WHERE id = ?").run(s.id);
+      expect(svc.joinByInvite(token, 'B')).toBeUndefined();
+      // Revoked invite is dead.
+      testDb.prepare("UPDATE decision_invites SET revoked_at = CURRENT_TIMESTAMP").run();
+      expect(svc.joinByInvite(token, 'C')).toBeUndefined();
+    });
+  });
 });

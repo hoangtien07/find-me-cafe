@@ -101,6 +101,11 @@ export const PUBLIC_ROUTE_ALLOW_LIST: string[] = [
   'AuthPublicController.resetPassword',
   'AuthPublicController.verifyMfaLogin',
   'ConfigController.getConfig',
+  // The decision invite token in the path is the only credential a stranger
+  // has; the server stores its SHA-256 hash and the preview leaks the outing,
+  // never who is in it.
+  'DecisionInviteController.join',
+  'DecisionInviteController.preview',
   // OAuth/OIDC discovery documents + the JSON 404 catchalls that keep
   // /.well-known probes from ever seeing SPA HTML.
   'DiscoveryController.authorizationServerForMcp',
