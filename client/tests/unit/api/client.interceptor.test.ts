@@ -29,6 +29,10 @@ describe('FE-CLIENT-INTERCEPTOR: 401 AUTH_REQUIRED redirect allowlist', () => {
     it('FE-CLIENT-INTERCEPTOR-006: /public/journey/:token', () => {
       expect(isAuthPublicPath('/public/journey/xyz789')).toBe(true)
     })
+
+    it('FE-CLIENT-INTERCEPTOR-015: /d/:token (anonymous decision invite)', () => {
+      expect(isAuthPublicPath('/d/some-invite-token')).toBe(true)
+    })
   })
 
   describe('paths that matched via includes() before fix — must redirect', () => {
