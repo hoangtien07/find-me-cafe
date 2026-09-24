@@ -2,6 +2,9 @@ import { createZodDto } from 'nestjs-zod';
 import {
   createDecisionRequestSchema,
   updateDecisionRequestSchema,
+  createDecisionInviteRequestSchema,
+  joinDecisionRequestSchema,
+  updateParticipantContextRequestSchema,
 } from '@trek/shared';
 
 /**
@@ -12,3 +15,6 @@ import {
  */
 export class DecisionCreateDto extends createZodDto(createDecisionRequestSchema) {}
 export class DecisionUpdateDto extends createZodDto(updateDecisionRequestSchema) {}
+export class DecisionInviteCreateDto extends createZodDto(createDecisionInviteRequestSchema) {}
+export class DecisionJoinDto extends createZodDto(joinDecisionRequestSchema) {}
+export class DecisionParticipantContextDto extends createZodDto(updateParticipantContextRequestSchema) {}

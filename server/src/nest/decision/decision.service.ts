@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import crypto from 'node:crypto';
 import type {
+  DecisionParticipant,
+  DecisionInvite,
+  DecisionInvitePreview,
   DecisionSession,
   DecisionStatus,
   DecisionTravelMode,
   UpdateDecisionRequest,
+  UpdateParticipantContextRequest,
 } from '@trek/shared';
 import { DECISION_TRAVEL_MODES } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
@@ -171,5 +176,207 @@ export class DecisionService {
       decisionSessionId: session.id,
       status: session.status as DecisionStatus,
     }, socketId);
+  }
+
+  // ── Invite boundary ───────────────────────────────────────────────────────
+
+  /** SHA-256 over a token — the only form persisted; plaintext exists once, in the response. */
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /** Opaque 24-byte URL-safe token, same shape as the trip invite links. */
+  private generateToken(): string {
+    return crypto.randomBytes(24).toString('base64url');
+  }
+
+  /**
+   * Mint an invite for a session. Returns the row plus the plaintext token —
+   * the DB stores only its SHA-256 hash, so the token is revealed exactly once.
+   */
+  createInvite(sessionId: number, userId: number, expiresInDays?: number | null): DecisionInvite & { token: string } {
+    const token = this.generateToken();
+    const expiresAt = expiresInDays
+      ? new Date(Date.now() + expiresInDays * 86400_000).toISOString()
+      : null;
+    const res = this.db.run(
+      'INSERT INTO decision_invites (decision_session_id, token_hash, expires_at, created_by_user_id) VALUES (?, ?, ?, ?)',
+      sessionId,
+      this.hashToken(token),
+      expiresAt,
+      userId,
+    );
+    const invite = this.db.get<Omit<DecisionInvite, never>>(
+      'SELECT id, decision_session_id, expires_at, revoked_at, created_by_user_id, created_at FROM decision_invites WHERE id = ?',
+      Number(res.lastInsertRowid),
+    )!;
+    return { ...invite, token };
+  }
+
+  /** An invite row when the token is valid — exists, unrevoked, unexpired. */
+  private findLiveInvite(token: string): { id: number; decision_session_id: number } | undefined {
+    return this.db.get<{ id: number; decision_session_id: number }>(
+      `SELECT id, decision_session_id FROM decision_invites
+        WHERE token_hash = ?
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`,
+      this.hashToken(token),
+    );
+  }
+
+  /**
+   * Public invite preview — the minimum a stranger needs before joining.
+   * Deliberately no participant rows or names: previewing an invite reveals
+   * the outing, not who is in it.
+   */
+  previewInvite(token: string): DecisionInvitePreview | undefined {
+    const invite = this.findLiveInvite(token);
+    if (!invite) return undefined;
+    const session = this.db.get<{ title: string; occasion: string | null; scheduled_at: string | null; status: DecisionStatus }>(
+      `${DECISION_SESSION_SELECT} WHERE ds.id = ?`,
+      invite.decision_session_id,
+    );
+    if (!session) return undefined;
+    const { n } = this.db.get<{ n: number }>(
+      'SELECT COUNT(*) n FROM decision_participants WHERE decision_session_id = ?',
+      invite.decision_session_id,
+    )!;
+    return {
+      title: session.title,
+      occasion: session.occasion,
+      scheduled_at: session.scheduled_at,
+      status: session.status,
+      participant_count: n,
+      expires_at: null,
+    };
+  }
+
+  /** Statuses where a stranger may still join the room. */
+  private static JOINABLE_STATUSES: DecisionStatus[] = ['collecting', 'ready'];
+
+  /**
+   * Anonymous join: mint the participant row plus a scoped participant session
+   * (its own SHA-256-hashed token — never the TREK global JWT, never an
+   * is_guest user). Inline context, when present, is applied the same way a
+   * PUT /context would persist it.
+   */
+  joinByInvite(
+    token: string,
+    displayName: string,
+    context?: UpdateParticipantContextRequest,
+  ): { participant: DecisionParticipant; participant_token: string } | undefined {
+    const invite = this.findLiveInvite(token);
+    if (!invite) return undefined;
+    const session = this.db.get<{ id: number; status: DecisionStatus; trip_id: number }>(
+      `${DECISION_SESSION_SELECT} WHERE ds.id = ?`,
+      invite.decision_session_id,
+    );
+    if (!session || !DecisionService.JOINABLE_STATUSES.includes(session.status)) return undefined;
+
+    const participantToken = this.generateToken();
+    const participantId = this.db.transaction((conn) => {
+      const res = conn
+        .prepare('INSERT INTO decision_participants (decision_session_id, display_name) VALUES (?, ?)')
+        .run(invite.decision_session_id, displayName);
+      const pid = Number(res.lastInsertRowid);
+      conn
+        .prepare('INSERT INTO decision_participant_sessions (participant_id, token_hash) VALUES (?, ?)')
+        .run(pid, this.hashToken(participantToken));
+      return pid;
+    });
+
+    if (context) this.applyParticipantContext(participantId, invite.decision_session_id, context);
+
+    const participant = this.getParticipant(participantId)!;
+    this.broadcastParticipant(session.trip_id, participant, 'decision:participant-joined');
+    return { participant, participant_token: participantToken };
+  }
+
+  /** A participant row by id. */
+  getParticipant(participantId: number): DecisionParticipant | undefined {
+    return this.db.get<DecisionParticipant>(
+      'SELECT * FROM decision_participants WHERE id = ?',
+      participantId,
+    );
+  }
+
+  /** Participants of a session (host view). */
+  listParticipants(sessionId: number): DecisionParticipant[] {
+    return this.db.all<DecisionParticipant>(
+      'SELECT * FROM decision_participants WHERE decision_session_id = ? ORDER BY created_at',
+      sessionId,
+    );
+  }
+
+  /**
+   * Replace a participant's whole context in one transaction: scalars on the
+   * participant row, the preference set (≤3), and deal-breakers (always
+   * persisted as hard constraints). submitted_at is stamped so the room knows
+   * the person finished the intake.
+   */
+  applyParticipantContext(
+    participantId: number,
+    sessionId: number,
+    ctx: UpdateParticipantContextRequest,
+  ): void {
+    this.db.transaction((conn) => {
+      const fields: string[] = [];
+      const values: unknown[] = [];
+      if (ctx.origin !== undefined) {
+        fields.push('origin_lat = ?', 'origin_lng = ?', 'origin_label = ?');
+        values.push(ctx.origin?.lat ?? null, ctx.origin?.lng ?? null, ctx.origin?.label ?? null);
+      }
+      if (ctx.max_travel_minutes !== undefined) {
+        fields.push('max_travel_minutes = ?');
+        values.push(ctx.max_travel_minutes);
+      }
+      if (ctx.budget_min !== undefined) {
+        fields.push('budget_min = ?');
+        values.push(ctx.budget_min);
+      }
+      if (ctx.budget_max !== undefined) {
+        fields.push('budget_max = ?');
+        values.push(ctx.budget_max);
+      }
+      fields.push('submitted_at = CURRENT_TIMESTAMP', 'updated_at = CURRENT_TIMESTAMP');
+      conn
+        .prepare(`UPDATE decision_participants SET ${fields.join(', ')} WHERE id = ?`)
+        .run(...values, participantId);
+
+      if (ctx.preferences !== undefined) {
+        conn.prepare('DELETE FROM decision_preferences WHERE participant_id = ?').run(participantId);
+        const ins = conn.prepare(
+          'INSERT INTO decision_preferences (participant_id, key, value, weight, is_hard) VALUES (?, ?, ?, ?, ?)',
+        );
+        for (const p of ctx.preferences) {
+          ins.run(participantId, p.key, p.value, p.weight ?? 1.0, p.is_hard ? 1 : 0);
+        }
+      }
+      if (ctx.deal_breakers !== undefined) {
+        conn.prepare('DELETE FROM decision_constraints WHERE participant_id = ?').run(participantId);
+        const ins = conn.prepare(
+          'INSERT INTO decision_constraints (decision_session_id, participant_id, type, operator, value_json, is_hard) VALUES (?, ?, ?, ?, ?, 1)',
+        );
+        for (const d of ctx.deal_breakers) {
+          ins.run(
+            sessionId,
+            participantId,
+            d.type,
+            d.operator ?? null,
+            d.value === undefined ? null : JSON.stringify(d.value),
+          );
+        }
+      }
+    });
+  }
+
+  /** Broadcast a participant row on the technical trip's room. */
+  private broadcastParticipant(
+    tripId: number | string,
+    participant: DecisionParticipant,
+    event: 'decision:participant-joined' | 'decision:participant-updated',
+    socketId?: string,
+  ): void {
+    this.realtime.broadcast(String(tripId), event, { participant }, socketId);
   }
 }

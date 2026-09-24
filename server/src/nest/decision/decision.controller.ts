@@ -16,7 +16,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DecisionService } from './decision.service';
 import { NotFoundError, ValidationError } from '../common/domain-errors';
-import { DecisionCreateDto, DecisionUpdateDto } from './decision.dto';
+import { DecisionCreateDto, DecisionUpdateDto, DecisionInviteCreateDto } from './decision.dto';
+import type { DecisionInviteWithToken } from '@trek/shared';
 
 /**
  * /api/decisions — the host-facing decision room ("chốt quán").
@@ -76,5 +77,25 @@ export class DecisionController {
       if (e instanceof NotFoundError) throw new HttpException({ error: e.message }, 404);
       throw e;
     }
+  }
+
+  /**
+   * POST /api/decisions/:id/invites — mint an anonymous join link. The
+   * plaintext token is returned here and only here; the DB keeps its SHA-256.
+   */
+  @Post(':id/invites')
+  @HttpCode(201)
+  createInvite(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() body: DecisionInviteCreateDto,
+  ): { invite: DecisionInviteWithToken } {
+    const sessionId = idParamSchema.safeParse(id);
+    if (!sessionId.success) throw new HttpException({ error: 'Invalid id' }, 400);
+    if (!this.decisions.getForHost(sessionId.data, user.id)) {
+      throw new HttpException({ error: 'Decision not found' }, 404);
+    }
+    const invite = this.decisions.createInvite(sessionId.data, user.id, body.expires_in_days);
+    return { invite };
   }
 }
