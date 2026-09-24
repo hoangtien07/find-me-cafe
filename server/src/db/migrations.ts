@@ -5226,6 +5226,168 @@ function runMigrations(db: Database.Database): void {
       const seated = reseatBookedNights(db);
       if (seated > 0) console.log(`[DB] Seated ${seated} booked night(s) at the head of their day`);
     },
+
+    /*
+     * Decision domain — the "pick a venue" room for a small group. A decision
+     * session is a 1:1 overlay on a technical TREK trip (trip_id UNIQUE): the
+     * trip stays the collaboration container while the decision state lives in
+     * its own tables. Anonymous participants never become TREK users — invites
+     * and participant sessions carry SHA-256 token hashes, and participants
+     * get a scoped token of their own. Recommendation runs are versioned and
+     * never overwritten so a Top-3 result stays reproducible.
+     */
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS decision_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'collecting',
+          occasion TEXT,
+          scheduled_at DATETIME,
+          travel_mode TEXT NOT NULL DEFAULT 'driving',
+          currency TEXT NOT NULL DEFAULT 'VND',
+          created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS decision_invites (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          expires_at DATETIME,
+          revoked_at DATETIME,
+          created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_invites_hash ON decision_invites(token_hash);
+        CREATE INDEX IF NOT EXISTS idx_decision_invites_session ON decision_invites(decision_session_id);
+
+        CREATE TABLE IF NOT EXISTS decision_participants (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          display_name TEXT NOT NULL,
+          origin_lat REAL,
+          origin_lng REAL,
+          origin_label TEXT,
+          max_travel_minutes INTEGER,
+          budget_min REAL,
+          budget_max REAL,
+          submitted_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_participants_session ON decision_participants(decision_session_id);
+
+        CREATE TABLE IF NOT EXISTS decision_participant_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          participant_id INTEGER NOT NULL UNIQUE REFERENCES decision_participants(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          expires_at DATETIME,
+          revoked_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_participant_sessions_hash ON decision_participant_sessions(token_hash);
+
+        CREATE TABLE IF NOT EXISTS decision_preferences (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          participant_id INTEGER NOT NULL REFERENCES decision_participants(id) ON DELETE CASCADE,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          weight REAL NOT NULL DEFAULT 1.0,
+          is_hard INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_preferences_participant ON decision_preferences(participant_id);
+
+        CREATE TABLE IF NOT EXISTS decision_constraints (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          participant_id INTEGER REFERENCES decision_participants(id) ON DELETE CASCADE,
+          type TEXT NOT NULL,
+          operator TEXT,
+          value_json TEXT,
+          is_hard INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_constraints_session ON decision_constraints(decision_session_id);
+
+        CREATE TABLE IF NOT EXISTS decision_candidates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,
+          source TEXT NOT NULL DEFAULT 'host',
+          added_by_type TEXT NOT NULL DEFAULT 'host',
+          added_by_id INTEGER,
+          snapshot_json TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(decision_session_id, place_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_candidates_session ON decision_candidates(decision_session_id);
+
+        CREATE TABLE IF NOT EXISTS decision_travel_estimates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          participant_id INTEGER NOT NULL REFERENCES decision_participants(id) ON DELETE CASCADE,
+          candidate_id INTEGER NOT NULL REFERENCES decision_candidates(id) ON DELETE CASCADE,
+          travel_mode TEXT NOT NULL,
+          distance_meters REAL,
+          duration_seconds REAL,
+          status TEXT NOT NULL DEFAULT 'ok',
+          provider TEXT NOT NULL,
+          computed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(decision_session_id, participant_id, candidate_id, travel_mode)
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_travel_estimates_session ON decision_travel_estimates(decision_session_id);
+
+        CREATE TABLE IF NOT EXISTS recommendation_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          strategy_version TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'running',
+          input_hash TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_recommendation_runs_session ON recommendation_runs(decision_session_id);
+
+        CREATE TABLE IF NOT EXISTS recommendation_scores (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          recommendation_run_id INTEGER NOT NULL REFERENCES recommendation_runs(id) ON DELETE CASCADE,
+          candidate_id INTEGER NOT NULL REFERENCES decision_candidates(id) ON DELETE CASCADE,
+          eligible INTEGER NOT NULL DEFAULT 1,
+          constraint_result_json TEXT,
+          place_fit REAL NOT NULL DEFAULT 0,
+          group_fit REAL NOT NULL DEFAULT 0,
+          travel_fairness REAL NOT NULL DEFAULT 0,
+          context_fit REAL NOT NULL DEFAULT 0,
+          trust_score REAL NOT NULL DEFAULT 0,
+          total_score REAL NOT NULL DEFAULT 0,
+          rank INTEGER,
+          explanation_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_recommendation_scores_run ON recommendation_scores(recommendation_run_id);
+
+        CREATE TABLE IF NOT EXISTS decision_selections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL UNIQUE REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          candidate_id INTEGER NOT NULL REFERENCES decision_candidates(id) ON DELETE CASCADE,
+          recommendation_run_id INTEGER REFERENCES recommendation_runs(id) ON DELETE SET NULL,
+          selected_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          selected_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS decision_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          participant_id INTEGER REFERENCES decision_participants(id) ON DELETE SET NULL,
+          candidate_id INTEGER REFERENCES decision_candidates(id) ON DELETE SET NULL,
+          fit_score INTEGER NOT NULL,
+          would_choose_again INTEGER NOT NULL,
+          regret_reason TEXT,
+          feedback_json TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {
