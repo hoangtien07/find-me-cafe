@@ -74,7 +74,7 @@ describe('decisionStore > applyEvent', () => {
     const ps = useDecisionStore.getState().participants
     expect(ps).toHaveLength(1)
     expect(ps[0]?.display_name).toBe('An')
-    expect(ps[0]?.budget_max).toBe(100000)
+    expect('budget_max' in ps[0]! && ps[0].budget_max).toBe(100000)
   })
 
   it('FE-DEC-002 adds and removes candidates', () => {

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   DecisionCandidate,
   DecisionParticipant,
+  DecisionParticipantRosterEntry,
   DecisionSelection,
   DecisionSession,
   DecisionStatus,
@@ -37,7 +38,12 @@ interface DecisionEventMessage {
 interface DecisionState {
   sessionId: number | null
   session: DecisionSession | null
-  participants: DecisionParticipant[]
+  /**
+   * Host view: roster entries ({id, display_name, submitted_at}); participant-
+   * joined/updated events upsert full rows. Both satisfy the roster shape —
+   * the room page only renders those three fields.
+   */
+  participants: (DecisionParticipant | DecisionParticipantRosterEntry)[]
   candidates: DecisionCandidate[]
   latestResult: RecommendationResult | null
   /** Last recommendation-ready run id — pages refetch when it changes. */
@@ -47,7 +53,7 @@ interface DecisionState {
   reset: () => void
   /** Called by the data layer after the initial fetch wires the room. */
   openSession: (session: DecisionSession) => void
-  setParticipants: (participants: DecisionParticipant[]) => void
+  setParticipants: (participants: (DecisionParticipant | DecisionParticipantRosterEntry)[]) => void
   setCandidates: (candidates: DecisionCandidate[]) => void
   setLatestResult: (result: RecommendationResult | null) => void
   setSelection: (selection: DecisionSelection | null) => void

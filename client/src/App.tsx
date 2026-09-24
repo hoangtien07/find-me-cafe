@@ -55,6 +55,8 @@ const CollectionsPage = lazyWithRetry(() => import('./pages/CollectionsPage'))
 const JourneyPublicPage = lazyWithRetry(() => import('./pages/JourneyPublicPage'))
 const SharedTripPage = lazyWithRetry(() => import('./pages/SharedTripPage'))
 const JoinTripPage = lazyWithRetry(() => import('./pages/JoinTripPage'))
+const DecisionPage = lazyWithRetry(() => import('./pages/DecisionPage'))
+const DecisionJoinPage = lazyWithRetry(() => import('./pages/DecisionJoinPage'))
 const InAppNotificationsPage = lazyWithRetry(() => import('./pages/InAppNotificationsPage.tsx'))
 const OAuthAuthorizePage = lazyWithRetry(() => import('./pages/OAuthAuthorizePage'))
 
@@ -438,6 +440,10 @@ export default function App() {
           <Route path="/register" element={<PublicRoute redirectAuthed><LoginPage /></PublicRoute>} />
           <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
           <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
+          {/* Anonymous group-decision join — the participant's scoped bearer
+              token is the only credential; deliberately outside ProtectedRoute
+              and outside the dashboard chrome (spec §8). */}
+          <Route path="/d/:token" element={<PublicRoute><DecisionJoinPage /></PublicRoute>} />
           {/* OAuth 2.1 consent page — intentionally outside ProtectedRoute */}
           <Route path="/oauth/consent" element={<PublicRoute><OAuthAuthorizePage /></PublicRoute>} />
           <Route
@@ -487,6 +493,17 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <FilesPage />
+              </ProtectedRoute>
+            }
+          />
+          {/* Host's decision room ("chốt quán") — spec §19 host surface.
+              /decision/new hits the same route with id='new': the hook creates
+              a session then replaces the URL with the real id. */}
+          <Route
+            path="/decision/:id"
+            element={
+              <ProtectedRoute>
+                <DecisionPage />
               </ProtectedRoute>
             }
           />

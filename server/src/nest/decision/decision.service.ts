@@ -393,6 +393,18 @@ export class DecisionService {
   }
 
   /**
+   * The host's roster: id, display name and whether they finished the intake.
+   * Deliberately excludes context (origins/budgets) — the room page shows a
+   * checkmark list, not everybody's details.
+   */
+  listRoster(sessionId: number): DecisionParticipantRosterEntry[] {
+    return this.db.all<DecisionParticipantRosterEntry>(
+      'SELECT id, display_name, submitted_at FROM decision_participants WHERE decision_session_id = ? ORDER BY created_at',
+      sessionId,
+    );
+  }
+
+  /**
    * Replace a participant's whole context in one transaction: scalars on the
    * participant row, the preference set (≤3), and deal-breakers (always
    * persisted as hard constraints). submitted_at is stamped so the room knows
