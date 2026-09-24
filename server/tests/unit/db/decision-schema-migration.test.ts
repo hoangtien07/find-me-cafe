@@ -135,4 +135,16 @@ describe('decision schema migration', () => {
     expect(sel.recommendation_run_id).toBeNull();
     expect(sel.candidate_id).toBe(3);
   });
+
+  it('MIG-DEC-008: backfills revoked_at on DBs that predate the column', () => {
+    const db = freshDb();
+    const { version } = db.prepare('SELECT version FROM schema_version').get() as { version: number };
+    // Simulate an install whose table was created before revoked_at existed:
+    // old column set, version rewound to just before the backfill migration.
+    db.exec('ALTER TABLE decision_participant_sessions DROP COLUMN revoked_at');
+    db.prepare('UPDATE schema_version SET version = ?').run(version - 1);
+    runMigrations(db);
+    expect(cols(db, 'decision_participant_sessions').has('revoked_at')).toBe(true);
+    expect(db.prepare('SELECT version FROM schema_version').get()).toEqual({ version });
+  });
 });
