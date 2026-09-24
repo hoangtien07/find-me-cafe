@@ -4,6 +4,9 @@ import { DecisionInviteController } from './decision-invite.controller';
 import { DecisionParticipantController } from './decision-participant.controller';
 import { DecisionParticipantGuard } from './decision-participant.guard';
 import { DecisionService } from './decision.service';
+import { TravelMatrixService } from './travel/travel-matrix.service';
+import { MockTravelMatrixProvider } from './travel/mock-travel-matrix.provider';
+import { TRAVEL_MATRIX_PROVIDER } from './travel/travel-matrix.provider';
 
 /**
  * Decision domain — the "pick a venue" group-decision room. The session is a
@@ -12,7 +15,12 @@ import { DecisionService } from './decision.service';
  */
 @Module({
   controllers: [DecisionController, DecisionInviteController, DecisionParticipantController],
-  providers: [DecisionService, DecisionParticipantGuard],
-  exports: [DecisionService],
+  providers: [
+    DecisionService,
+    DecisionParticipantGuard,
+    TravelMatrixService,
+    { provide: TRAVEL_MATRIX_PROVIDER, useClass: MockTravelMatrixProvider },
+  ],
+  exports: [DecisionService, TravelMatrixService],
 })
 export class DecisionModule {}
