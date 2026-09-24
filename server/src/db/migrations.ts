@@ -5388,6 +5388,23 @@ function runMigrations(db: Database.Database): void {
         );
       `);
     },
+    // VS-13 — the DecisionGraph funnel (plan Phase 15): append-only product
+    // events, separate from the realtime broadcasts. `metadata` is optional
+    // JSON (e.g. run id, candidate rank) for post-hoc analysis.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS decision_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          type TEXT NOT NULL,
+          user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          participant_id INTEGER REFERENCES decision_participants(id) ON DELETE SET NULL,
+          metadata TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_events_session ON decision_events(decision_session_id);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

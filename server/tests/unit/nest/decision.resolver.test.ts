@@ -6,6 +6,7 @@ import { DecisionService } from '../../../src/nest/decision/decision.service';
 import { TravelMatrixService } from '../../../src/nest/decision/travel/travel-matrix.service';
 import { MockTravelMatrixProvider } from '../../../src/nest/decision/travel/mock-travel-matrix.provider';
 import { DecisionResolverService } from '../../../src/nest/decision/resolver/resolver.service';
+import { DecisionTelemetryService } from '../../../src/nest/decision/decision-telemetry.service';
 import type { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 
 /**
@@ -25,8 +26,9 @@ describe('DecisionResolverService', () => {
     testDb.prepare('INSERT INTO users (id, username, email, password_hash) VALUES (1, ?, ?, ?)').run('host', 'h@t.dev', 'x');
     const db = new DatabaseService(testDb);
     const realtime = { broadcast } as unknown as RealtimeService;
-    decisions = new DecisionService(db, realtime);
-    resolver = new DecisionResolverService(db, realtime, decisions, new TravelMatrixService(db, new MockTravelMatrixProvider()));
+    const telemetry = new DecisionTelemetryService(db);
+    decisions = new DecisionService(db, realtime, telemetry);
+    resolver = new DecisionResolverService(db, realtime, decisions, new TravelMatrixService(db, new MockTravelMatrixProvider()), telemetry);
   });
 
   const joinWithOrigin = (sessionId: number, name: string, lat: number, lng: number, maxMin: number | null = null) => {
@@ -174,6 +176,30 @@ describe('DecisionResolverService', () => {
     joinWithOrigin(s.id, 'An', 10.77, 106.69);
     await resolver.resolve(s.id);
     expect(() => decisions.select(s.id, 999, 1)).toThrow('Candidate not found');
+  });
+
+  it('records the full funnel into decision_events (VS-13)', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    const cand = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
+    const p = joinWithOrigin(s.id, 'An', 10.77, 106.69);
+    const run = await resolver.resolve(s.id);
+    decisions.select(s.id, cand.id, 1);
+    decisions.addFeedback(s.id, { candidate_id: cand.id, fit_score: 5, would_choose_again: true }, p.id);
+
+    const types = testDb
+      .prepare('SELECT type FROM decision_events WHERE decision_session_id = ? ORDER BY id')
+      .all(s.id)
+      .map((r) => r.type);
+    for (const t of [
+      'decision_created', 'invite_created', 'participant_joined',
+      'participant_context_submitted', 'candidate_added',
+      'resolve_started', 'resolve_completed', 'venue_selected', 'feedback_submitted',
+    ]) {
+      expect(types).toContain(t);
+    }
+    // funnel ordering: joined before submitted, started before completed
+    expect(types.indexOf('participant_joined')).toBeLessThan(types.indexOf('participant_context_submitted'));
+    expect(types.indexOf('resolve_started')).toBeLessThan(types.indexOf('resolve_completed'));
   });
 
   it('feedback records the learnable row with a wire boolean', async () => {

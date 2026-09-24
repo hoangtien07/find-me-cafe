@@ -20,6 +20,7 @@ import type {
 import { DECISION_TRAVEL_MODES } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { DecisionTelemetryService } from './decision-telemetry.service';
 import { ValidationError, NotFoundError } from '../common/domain-errors';
 
 /** The decision_sessions row joined with the technical trip's title — the wire shape. */
@@ -69,6 +70,7 @@ export class DecisionService {
   constructor(
     private readonly db: DatabaseService,
     private readonly realtime: RealtimeService,
+    private readonly telemetry: DecisionTelemetryService,
   ) {}
 
   /** Create the technical trip + the decision session atomically. */
@@ -95,6 +97,7 @@ export class DecisionService {
         );
       return Number(res.lastInsertRowid);
     });
+    this.telemetry.track(sessionId, 'decision_created', { userId });
     return this.getSession(sessionId)!;
   }
 
@@ -217,6 +220,7 @@ export class DecisionService {
       'SELECT id, decision_session_id, expires_at, revoked_at, created_by_user_id, created_at FROM decision_invites WHERE id = ?',
       Number(res.lastInsertRowid),
     )!;
+    this.telemetry.track(sessionId, 'invite_created', { userId });
     return { ...invite, token };
   }
 
@@ -292,6 +296,7 @@ export class DecisionService {
       return pid;
     });
 
+    this.telemetry.track(invite.decision_session_id, 'participant_joined', { participantId });
     if (context) this.applyParticipantContext(participantId, invite.decision_session_id, context);
 
     const participant = this.getParticipant(participantId)!;
@@ -372,6 +377,7 @@ export class DecisionService {
     ctx: UpdateParticipantContextRequest,
   ): DecisionParticipant {
     this.applyParticipantContext(participantId, sessionId, ctx);
+    this.telemetry.track(sessionId, 'participant_context_submitted', { participantId });
     const participant = this.getParticipant(participantId)!;
     const session = this.getSession(sessionId);
     if (session) this.broadcastParticipant(session.trip_id, participant, 'decision:participant-updated');
@@ -531,6 +537,12 @@ export class DecisionService {
       Number(res.lastInsertRowid),
     )!;
     const wire = this.toCandidate(candidate);
+    this.telemetry.track(
+      sessionId,
+      'candidate_added',
+      addedBy.type === 'host' ? { userId: addedBy.id ?? undefined } : { participantId: addedBy.id ?? undefined },
+      { candidateId: wire.id },
+    );
     this.realtime.broadcast(String(session.trip_id), 'decision:candidate-added', { candidate: wire });
     return wire;
   }
@@ -590,6 +602,7 @@ export class DecisionService {
       'SELECT * FROM decision_selections WHERE decision_session_id = ?',
       sessionId,
     )!;
+    this.telemetry.track(sessionId, 'venue_selected', { userId }, { candidateId, runId: run?.id ?? null });
     this.realtime.broadcast(String(session.trip_id), 'decision:selected', {
       decisionSessionId: sessionId,
       selection,
@@ -637,6 +650,12 @@ export class DecisionService {
       'SELECT * FROM decision_feedback WHERE id = ?',
       Number(res.lastInsertRowid),
     )!;
+    this.telemetry.track(
+      sessionId,
+      'feedback_submitted',
+      participantId ? { participantId } : {},
+      { candidateId: body.candidate_id, fitScore: body.fit_score },
+    );
     return { ...row, would_choose_again: Boolean(row.would_choose_again) } as unknown as DecisionFeedback;
   }
 

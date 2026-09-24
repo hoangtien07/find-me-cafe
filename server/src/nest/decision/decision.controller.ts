@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DecisionService } from './decision.service';
 import { DecisionResolverService } from './resolver/resolver.service';
+import { DecisionTelemetryService } from './decision-telemetry.service';
 import { NotFoundError, ValidationError } from '../common/domain-errors';
 import {
   DecisionCreateDto,
@@ -43,6 +44,7 @@ export class DecisionController {
   constructor(
     private readonly decisions: DecisionService,
     private readonly resolver: DecisionResolverService,
+    private readonly telemetry: DecisionTelemetryService,
   ) {}
 
   /** POST /api/decisions — create a session + its technical trip container. */
@@ -175,6 +177,7 @@ export class DecisionController {
     const sessionId = this.requireHostedSession(user, id);
     const result = this.resolver.latestResult(sessionId);
     if (!result) throw new HttpException({ error: 'No completed run' }, 404);
+    this.telemetry.track(sessionId, 'recommendation_viewed', { userId: user.id });
     return result;
   }
 
