@@ -1,3 +1,4 @@
+import { decisionWsEventPayloads } from '../decision/decision-events.schema';
 import { roadtripDayBoundaryListSchema } from '../roadtrip/day-boundary.schema';
 import { roadtripPreferencesSchema } from '../roadtrip/preferences.schema';
 
@@ -400,6 +401,17 @@ export const TREK_WS_EVENTS = {
     scope: 'user',
     payload: z.object({ jobId: z.string(), tripId: id.nullish(), message: z.string() }),
   },
+
+  // ── Decision (trip-scoped; the host's sockets join the technical trip's room —
+  //    anonymous participants never hold a socket in V1). Payload contracts live
+  //    in decision/decision-events.schema.ts next to the entity schemas they carry.
+  'decision:participant-joined': { scope: 'trip', payload: decisionWsEventPayloads['decision:participant-joined'] },
+  'decision:participant-updated': { scope: 'trip', payload: decisionWsEventPayloads['decision:participant-updated'] },
+  'decision:candidate-added': { scope: 'trip', payload: decisionWsEventPayloads['decision:candidate-added'] },
+  'decision:candidate-removed': { scope: 'trip', payload: decisionWsEventPayloads['decision:candidate-removed'] },
+  'decision:status-updated': { scope: 'trip', payload: decisionWsEventPayloads['decision:status-updated'] },
+  'decision:recommendation-ready': { scope: 'trip', payload: decisionWsEventPayloads['decision:recommendation-ready'] },
+  'decision:selected': { scope: 'trip', payload: decisionWsEventPayloads['decision:selected'] },
 } as const satisfies Record<string, TrekWsEventContract>;
 
 /** Every registered event name. The registry above is the count; this derives from it. */
