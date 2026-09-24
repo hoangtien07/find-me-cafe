@@ -4,15 +4,17 @@ import {
   Get,
   HttpCode,
   HttpException,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
 import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse, RecommendationResult } from '@trek/shared';
 import { DecisionService } from './decision.service';
 import { DecisionResolverService } from './resolver/resolver.service';
+import { DecisionTelemetryService } from './decision-telemetry.service';
 import { DecisionParticipantGuard } from './decision-participant.guard';
 import { CurrentParticipant } from './current-participant.decorator';
-import { DecisionParticipantContextDto } from './decision.dto';
+import { DecisionParticipantContextDto, DecisionTelemetryDto } from './decision.dto';
 
 /**
  * /api/decision-participant — the anonymous participant's scoped surface.
@@ -29,6 +31,7 @@ export class DecisionParticipantController {
   constructor(
     private readonly decisions: DecisionService,
     private readonly resolver: DecisionResolverService,
+    private readonly telemetry: DecisionTelemetryService,
   ) {}
 
   /** GET /api/decision-participant/session — the room, the roster, own context. */
@@ -65,5 +68,17 @@ export class DecisionParticipantController {
     const result = this.resolver.latestResult(p.decision_session_id);
     if (!result) throw new HttpException({ error: 'No completed run' }, 404);
     return result;
+  }
+
+  /**
+   * POST /api/decision-participant/telemetry — let a participant self-report a
+   * client-side funnel step (navigation_opened / recommendation_viewed). The
+   * enum whitelist keeps devices from minting server-side funnel events.
+   */
+  @Post('telemetry')
+  @HttpCode(200)
+  track(@CurrentParticipant() p: DecisionParticipant, @Body() body: DecisionTelemetryDto): { ok: boolean } {
+    this.telemetry.track(p.decision_session_id, body.event, { participantId: p.id });
+    return { ok: true };
   }
 }

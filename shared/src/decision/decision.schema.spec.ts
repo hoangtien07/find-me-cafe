@@ -9,6 +9,8 @@ import {
   updateParticipantContextRequestSchema,
   selectDecisionRequestSchema,
   resolveDecisionRequestSchema,
+  trackDecisionEventRequestSchema,
+  DECISION_EVENT_TYPES,
   decisionSessionSchema,
   decisionParticipantSchema,
   decisionConstraintResultSchema,
@@ -299,6 +301,34 @@ describe('decision contract', () => {
       expect(bad.success).toBe(false);
       const badJoin = decisionWsEventPayloads['decision:participant-joined'].safeParse({ participant: { id: 1 } });
       expect(badJoin.success).toBe(false);
+    });
+  });
+
+  describe('telemetry funnel', () => {
+    it('registers exactly the plan Phase-15 event set', () => {
+      expect([...DECISION_EVENT_TYPES].sort()).toEqual(
+        [
+          'decision_created',
+          'invite_created',
+          'participant_joined',
+          'participant_context_submitted',
+          'candidate_added',
+          'resolve_started',
+          'resolve_completed',
+          'recommendation_viewed',
+          'venue_selected',
+          'navigation_opened',
+          'feedback_submitted',
+        ].sort(),
+      );
+    });
+
+    it('participants can only self-report navigation + recommendation views', () => {
+      expect(trackDecisionEventRequestSchema.safeParse({ event: 'navigation_opened' }).success).toBe(true);
+      expect(trackDecisionEventRequestSchema.safeParse({ event: 'recommendation_viewed' }).success).toBe(true);
+      // Never allow a device to mint server-side funnel steps.
+      expect(trackDecisionEventRequestSchema.safeParse({ event: 'resolve_completed' }).success).toBe(false);
+      expect(trackDecisionEventRequestSchema.safeParse({ event: 'bogus' }).success).toBe(false);
     });
   });
 });

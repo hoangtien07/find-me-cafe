@@ -11,6 +11,7 @@ import { DatabaseService } from '../../database/database.service';
 import { RealtimeService } from '../../realtime/realtime.service';
 import { TravelMatrixService } from '../travel/travel-matrix.service';
 import { DecisionService } from '../decision.service';
+import { DecisionTelemetryService } from '../decision-telemetry.service';
 import { NotFoundError, ValidationError } from '../../common/domain-errors';
 import { evaluateConstraints } from './constraint-engine';
 import { computeFairness } from './fairness-engine';
@@ -34,6 +35,7 @@ export class DecisionResolverService {
     private readonly realtime: RealtimeService,
     private readonly decisions: DecisionService,
     private readonly matrix: TravelMatrixService,
+    private readonly telemetry: DecisionTelemetryService,
   ) {}
 
   /**
@@ -53,6 +55,7 @@ export class DecisionResolverService {
     if (participants.length === 0) throw new ValidationError('No participants joined');
 
     // Resolve happens inside 'resolving' so a watcher sees the transition.
+    this.telemetry.track(sessionId, 'resolve_started', {}, { candidates: candidates.length, participants: participants.length });
     this.setStatus(session, 'resolving');
     const estimates = await this.matrix.computeSessionMatrix(sessionId, session.travel_mode, true);
 
@@ -156,6 +159,7 @@ export class DecisionResolverService {
     });
 
     this.setStatus({ ...session, status: 'resolved' }, 'resolved');
+    this.telemetry.track(sessionId, 'resolve_completed', {}, { runId, candidates: candidates.length });
     this.realtime.broadcast(String(session.trip_id), 'decision:recommendation-ready', {
       decisionSessionId: sessionId,
       runId,

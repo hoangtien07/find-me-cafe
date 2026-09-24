@@ -476,3 +476,42 @@ export const createDecisionFeedbackRequestSchema = z.object({
   regret_reason: z.string().trim().max(500).nullish(),
 });
 export type CreateDecisionFeedbackRequest = z.infer<typeof createDecisionFeedbackRequestSchema>;
+
+/**
+ * Decision telemetry (spec §25 + plan Phase 15) — the DecisionGraph funnel.
+ * Server-visible events are recorded by the services; participants can only
+ * self-report the two client-side actions in PARTICIPANT_TRACKABLE_EVENTS.
+ */
+export const DECISION_EVENT_TYPES = [
+  'decision_created',
+  'invite_created',
+  'participant_joined',
+  'participant_context_submitted',
+  'candidate_added',
+  'resolve_started',
+  'resolve_completed',
+  'recommendation_viewed',
+  'venue_selected',
+  'navigation_opened',
+  'feedback_submitted',
+] as const;
+export const decisionEventTypeSchema = z.enum(DECISION_EVENT_TYPES);
+export type DecisionEventType = z.infer<typeof decisionEventTypeSchema>;
+
+export const decisionEventSchema = z.object({
+  id: idSchema,
+  decision_session_id: idSchema,
+  type: decisionEventTypeSchema,
+  user_id: idSchema.nullable(),
+  participant_id: idSchema.nullable(),
+  metadata: z.record(z.unknown()).nullable(),
+  created_at: z.string(),
+});
+export type DecisionEvent = z.infer<typeof decisionEventSchema>;
+
+/** The only two funnel steps that happen on a participant's device. */
+export const PARTICIPANT_TRACKABLE_EVENTS = ['navigation_opened', 'recommendation_viewed'] as const;
+export const trackDecisionEventRequestSchema = z.object({
+  event: z.enum(PARTICIPANT_TRACKABLE_EVENTS),
+});
+export type TrackDecisionEventRequest = z.infer<typeof trackDecisionEventRequestSchema>;

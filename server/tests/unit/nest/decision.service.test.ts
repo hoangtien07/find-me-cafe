@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { DecisionService } from '../../../src/nest/decision/decision.service';
+import { DecisionTelemetryService } from '../../../src/nest/decision/decision-telemetry.service';
 import { DatabaseService } from '../../../src/nest/database/database.service';
 import type { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 import { ValidationError, NotFoundError } from '../../../src/nest/common/domain-errors';
@@ -20,7 +21,8 @@ beforeEach(() => {
   seedUser(1);
   broadcast.mockClear();
   const realtime = { broadcast } as unknown as RealtimeService;
-  svc = new DecisionService(new DatabaseService(testDb), realtime);
+  const db = new DatabaseService(testDb);
+  svc = new DecisionService(db, realtime, new DecisionTelemetryService(db));
 });
 
 describe('DecisionService', () => {
