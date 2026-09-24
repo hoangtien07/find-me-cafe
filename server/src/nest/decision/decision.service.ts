@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import type {
   DecisionCandidate,
   DecisionConstraint,
+  DecisionFeedback,
   DecisionParticipant,
+  DecisionSelection,
   DecisionParticipantRosterEntry,
   DecisionParticipantSessionResponse,
   DecisionPreference,
@@ -547,6 +549,95 @@ export class DecisionService {
       decisionSessionId: sessionId,
       candidateId,
     });
+  }
+
+  // ── Selection & feedback ──────────────────────────────────────────────────
+
+  /**
+   * Lock in the group's venue: one decision_selections row per session
+   * (re-selecting replaces it), linked to the run that ranked it, and the
+   * session flips to 'selected'. Broadcasts decision:selected + status-updated.
+   */
+  select(sessionId: number, candidateId: number, userId: number): DecisionSelection {
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError('Decision not found');
+    if (session.status !== 'resolved' && session.status !== 'selected') {
+      throw new ValidationError(`Decision is ${session.status} — resolve first`);
+    }
+    const candidate = this.db.get<{ id: number }>(
+      'SELECT id FROM decision_candidates WHERE id = ? AND decision_session_id = ?',
+      candidateId,
+      sessionId,
+    );
+    if (!candidate) throw new NotFoundError('Candidate not found in this decision');
+    const run = this.db.get<{ id: number }>(
+      "SELECT id FROM recommendation_runs WHERE decision_session_id = ? AND status = 'completed' ORDER BY id DESC LIMIT 1",
+      sessionId,
+    );
+
+    this.db.transaction((conn) => {
+      conn.prepare('DELETE FROM decision_selections WHERE decision_session_id = ?').run(sessionId);
+      conn
+        .prepare(
+          'INSERT INTO decision_selections (decision_session_id, candidate_id, recommendation_run_id, selected_by_user_id) VALUES (?, ?, ?, ?)',
+        )
+        .run(sessionId, candidateId, run?.id ?? null, userId);
+      conn
+        .prepare("UPDATE decision_sessions SET status = 'selected', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(sessionId);
+    });
+    const selection = this.db.get<DecisionSelection>(
+      'SELECT * FROM decision_selections WHERE decision_session_id = ?',
+      sessionId,
+    )!;
+    this.realtime.broadcast(String(session.trip_id), 'decision:selected', {
+      decisionSessionId: sessionId,
+      selection,
+    });
+    this.broadcastStatus({ ...session, status: 'selected' });
+    return selection;
+  }
+
+  /** The session's locked-in selection, if any. */
+  getSelection(sessionId: number): DecisionSelection | undefined {
+    return this.db.get<DecisionSelection>(
+      'SELECT * FROM decision_selections WHERE decision_session_id = ?',
+      sessionId,
+    );
+  }
+
+  /**
+   * Post-outing feedback (spec §17: the learnable record). V1 asks three
+   * questions per participant/host — fit 1-5, would_choose_again, regret reason.
+   */
+  addFeedback(
+    sessionId: number,
+    body: { candidate_id: number; fit_score: number; would_choose_again: boolean; regret_reason?: string | null },
+    participantId: number | null,
+  ): DecisionFeedback {
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError('Decision not found');
+    const candidate = this.db.get<{ id: number }>(
+      'SELECT id FROM decision_candidates WHERE id = ? AND decision_session_id = ?',
+      body.candidate_id,
+      sessionId,
+    );
+    if (!candidate) throw new NotFoundError('Candidate not found in this decision');
+    const res = this.db.run(
+      `INSERT INTO decision_feedback (decision_session_id, participant_id, candidate_id, fit_score, would_choose_again, regret_reason)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      sessionId,
+      participantId,
+      body.candidate_id,
+      body.fit_score,
+      body.would_choose_again ? 1 : 0,
+      body.regret_reason ?? null,
+    );
+    const row = this.db.get<Record<string, unknown>>(
+      'SELECT * FROM decision_feedback WHERE id = ?',
+      Number(res.lastInsertRowid),
+    )!;
+    return { ...row, would_choose_again: Boolean(row.would_choose_again) } as unknown as DecisionFeedback;
   }
 
   /** Broadcast a participant row on the technical trip's room. */
