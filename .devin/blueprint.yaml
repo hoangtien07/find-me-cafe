@@ -1,0 +1,28 @@
+# Devin environment blueprint — https://docs.devin.ai/onboard-devin/environment-yaml
+# Git-managed: this file is the repo's blueprint for Devin sessions.
+
+# One-time setup on fresh VMs: the Playwright browser the client e2e suite needs.
+initialize: |
+  cd client && npx playwright install chromium
+
+# Warm deps + the shared workspace build (shared/dist must exist before
+# server/client typecheck or run) on every snapshot build.
+maintenance: |
+  npm install && npm run build --workspace=shared
+
+knowledge:
+  - name: typecheck
+    contents: |
+      npm run typecheck --workspace=<pkg>   # per touched package; shared must be built first (npm run build --workspace=shared). Server also has typecheck:tests for tests/. npm run build emits even on errors — it is NOT a type gate.
+  - name: lint
+    contents: |
+      npm run lint                        # eslint across all three workspaces (server/shared auto-fix, client check-only). Client: npm run lint:pages (CI gate), npm run theme:lint (local only). shared: npm run format:check.
+  - name: test
+    contents: |
+      npm run test                        # all workspaces. Scoped: npm run test --workspace=server (also test:unit/test:integration/test:ws/test:e2e), cd client && npm run test, cd client && npm run e2e (Playwright). Single file: npx vitest run <path> from the package dir.
+  - name: i18n-parity
+    contents: |
+      npm run i18n:parity:strict --workspace=shared   # locales live in shared/src/i18n/<locale>/, en/ canonical; every locale needs the same keys AND real translations. Rebuild shared after schema/locale edits before typecheck.
+  - name: dev
+    contents: |
+      npm run dev                         # builds shared then watches shared+server+client. Server :3001; Vite proxies API/ws/uploads/MCP/OAuth to it. Env vars: server/.env.example.
