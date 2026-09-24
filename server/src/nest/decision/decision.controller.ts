@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   HttpCode,
@@ -10,13 +11,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '../../types';
-import type { DecisionSession } from '@trek/shared';
+import type { DecisionCandidate, DecisionSession } from '@trek/shared';
 import { idParamSchema } from '@trek/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DecisionService } from './decision.service';
 import { NotFoundError, ValidationError } from '../common/domain-errors';
-import { DecisionCreateDto, DecisionUpdateDto, DecisionInviteCreateDto } from './decision.dto';
+import {
+  DecisionCreateDto,
+  DecisionUpdateDto,
+  DecisionInviteCreateDto,
+  DecisionCandidateAddDto,
+} from './decision.dto';
 import type { DecisionInviteWithToken } from '@trek/shared';
 
 /**
@@ -97,5 +103,64 @@ export class DecisionController {
     }
     const invite = this.decisions.createInvite(sessionId.data, user.id, body.expires_in_days);
     return { invite };
+  }
+
+  /** GET /api/decisions/:id/candidates — the pinned candidate venues. */
+  @Get(':id/candidates')
+  listCandidates(@CurrentUser() user: User, @Param('id') id: string): { candidates: DecisionCandidate[] } {
+    const sessionId = this.requireHostedSession(user, id);
+    return { candidates: this.decisions.listCandidates(sessionId) };
+  }
+
+  /** POST /api/decisions/:id/candidates — pin a trip Place as a candidate. */
+  @Post(':id/candidates')
+  @HttpCode(201)
+  addCandidate(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() body: DecisionCandidateAddDto,
+  ): { candidate: DecisionCandidate } {
+    const sessionId = this.requireHostedSession(user, id);
+    try {
+      return { candidate: this.decisions.addCandidate(sessionId, body.place_id, { type: 'host', id: user.id }) };
+    } catch (e: unknown) {
+      this.throwMapped(e);
+    }
+  }
+
+  /** DELETE /api/decisions/:id/candidates/:candidateId — unpin a candidate. */
+  @Delete(':id/candidates/:candidateId')
+  @HttpCode(200)
+  removeCandidate(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Param('candidateId') candidateId: string,
+  ): { ok: true } {
+    const sessionId = this.requireHostedSession(user, id);
+    const cid = idParamSchema.safeParse(candidateId);
+    if (!cid.success) throw new HttpException({ error: 'Invalid candidate id' }, 400);
+    try {
+      this.decisions.removeCandidate(sessionId, cid.data);
+    } catch (e: unknown) {
+      this.throwMapped(e);
+    }
+    return { ok: true };
+  }
+
+  /** The session id when `id` parses and `user` hosts it; the shared 400/404. */
+  private requireHostedSession(user: User, id: string): number {
+    const sessionId = idParamSchema.safeParse(id);
+    if (!sessionId.success) throw new HttpException({ error: 'Invalid id' }, 400);
+    if (!this.decisions.getForHost(sessionId.data, user.id)) {
+      throw new HttpException({ error: 'Decision not found' }, 404);
+    }
+    return sessionId.data;
+  }
+
+  /** Map the domain errors onto HTTP. Always throws. */
+  private throwMapped(e: unknown): never {
+    if (e instanceof ValidationError) throw new HttpException({ error: e.message }, 400);
+    if (e instanceof NotFoundError) throw new HttpException({ error: e.message }, 404);
+    throw e;
   }
 }

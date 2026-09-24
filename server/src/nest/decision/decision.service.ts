@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import crypto from 'node:crypto';
 import type {
+  DecisionCandidate,
   DecisionConstraint,
   DecisionParticipant,
   DecisionParticipantRosterEntry,
@@ -442,6 +443,109 @@ export class DecisionService {
           );
         }
       }
+    });
+  }
+
+  // ── Candidates ────────────────────────────────────────────────────────────
+
+  /** A candidate row with its snapshot parsed for the wire. */
+  private toCandidate(row: Record<string, unknown>): DecisionCandidate {
+    return {
+      ...row,
+      snapshot: typeof row.snapshot_json === 'string' ? JSON.parse(row.snapshot_json) : null,
+      snapshot_json: undefined,
+    } as unknown as DecisionCandidate;
+  }
+
+  /** Candidates of a session, oldest first. */
+  listCandidates(sessionId: number): DecisionCandidate[] {
+    return this.db
+      .all<Record<string, unknown>>(
+        'SELECT * FROM decision_candidates WHERE decision_session_id = ? ORDER BY created_at',
+        sessionId,
+      )
+      .map((r) => this.toCandidate(r));
+  }
+
+  /**
+   * Pin a TREK Place as a candidate. The place must live on this session's
+   * technical trip — a stranger place id returns NotFoundError, same as a bad
+   * session. The snapshot freezes the evidence the resolver will later cite
+   * (name, coords, category, price), so a host editing the Place afterwards
+   * can't rewrite what the recommendation saw.
+   */
+  addCandidate(
+    sessionId: number,
+    placeId: number,
+    addedBy: { type: 'host' | 'participant' | 'system'; id: number | null },
+  ): DecisionCandidate {
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError('Decision not found');
+    const place = this.db.get<Record<string, unknown>>(
+      `SELECT p.*, c.name AS category_name
+         FROM places p LEFT JOIN categories c ON c.id = p.category_id
+        WHERE p.id = ? AND p.trip_id = ?`,
+      placeId,
+      session.trip_id,
+    );
+    if (!place) throw new NotFoundError('Place not found in this decision');
+
+    const existing = this.db.get<{ id: number }>(
+      'SELECT id FROM decision_candidates WHERE decision_session_id = ? AND place_id = ?',
+      sessionId,
+      placeId,
+    );
+    if (existing) throw new ValidationError('Place is already a candidate');
+
+    const ratingRow = this.db.get<{ r: number | null }>(
+      'SELECT AVG(rating) r FROM place_ratings WHERE place_id = ?',
+      placeId,
+    );
+    const snapshot = {
+      name: place.name,
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+      address: place.address ?? null,
+      google_place_id: place.google_place_id ?? null,
+      price: place.price ?? null,
+      currency: place.currency ?? null,
+      rating: ratingRow?.r ?? null,
+      category: place.category_name ?? null,
+      description: place.description ?? null,
+      image_url: place.image_url ?? null,
+    };
+
+    const res = this.db.run(
+      `INSERT INTO decision_candidates (decision_session_id, place_id, source, added_by_type, added_by_id, snapshot_json)
+       VALUES (?, ?, 'manual', ?, ?, ?)`,
+      sessionId,
+      placeId,
+      addedBy.type,
+      addedBy.id,
+      JSON.stringify(snapshot),
+    );
+    const candidate = this.db.get<Record<string, unknown>>(
+      'SELECT * FROM decision_candidates WHERE id = ?',
+      Number(res.lastInsertRowid),
+    )!;
+    const wire = this.toCandidate(candidate);
+    this.realtime.broadcast(String(session.trip_id), 'decision:candidate-added', { candidate: wire });
+    return wire;
+  }
+
+  /** Remove a candidate; the host's room hears decision:candidate-removed. */
+  removeCandidate(sessionId: number, candidateId: number): void {
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError('Decision not found');
+    const res = this.db.run(
+      'DELETE FROM decision_candidates WHERE id = ? AND decision_session_id = ?',
+      candidateId,
+      sessionId,
+    );
+    if (res.changes === 0) throw new NotFoundError('Candidate not found');
+    this.realtime.broadcast(String(session.trip_id), 'decision:candidate-removed', {
+      decisionSessionId: sessionId,
+      candidateId,
     });
   }
 

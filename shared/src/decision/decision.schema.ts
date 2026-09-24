@@ -114,6 +114,10 @@ export const decisionCandidateSnapshotSchema = z.object({
   currency: z.string().nullable().optional(),
   rating: z.number().nullable().optional(),
   opening_hours: z.unknown().nullable().optional(),
+  /** The TREK category name at snapshot time — what veto_category checks. */
+  category: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
 });
 export type DecisionCandidateSnapshot = z.infer<typeof decisionCandidateSnapshotSchema>;
 

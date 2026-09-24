@@ -7,7 +7,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import type { DecisionParticipant, DecisionParticipantSessionResponse } from '@trek/shared';
+import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse } from '@trek/shared';
 import { DecisionService } from './decision.service';
 import { DecisionParticipantGuard } from './decision-participant.guard';
 import { CurrentParticipant } from './current-participant.decorator';
@@ -47,5 +47,11 @@ export class DecisionParticipantController {
     @Body() body: DecisionParticipantContextDto,
   ): { participant: DecisionParticipant } {
     return { participant: this.decisions.updateParticipantContext(p.id, p.decision_session_id, body) };
+  }
+
+  /** GET /api/decision-participant/candidates — the venues the group is choosing between. */
+  @Get('candidates')
+  candidates(@CurrentParticipant() p: DecisionParticipant): { candidates: DecisionCandidate[] } {
+    return { candidates: this.decisions.listCandidates(p.decision_session_id) };
   }
 }
