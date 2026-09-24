@@ -78,6 +78,19 @@ const RESET_TABLES = [
   // Accommodations & days
   'day_accommodations',
   'days',
+  // Decision room — child tables before decision_sessions, which is before trips.
+  'decision_feedback',
+  'decision_selections',
+  'recommendation_scores',
+  'recommendation_runs',
+  'decision_travel_estimates',
+  'decision_candidates',
+  'decision_constraints',
+  'decision_preferences',
+  'decision_participant_sessions',
+  'decision_participants',
+  'decision_invites',
+  'decision_sessions',
   // Trip
   'share_tokens',
   'trip_invite_tokens',
