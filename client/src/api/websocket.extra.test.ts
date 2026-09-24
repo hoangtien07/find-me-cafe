@@ -1,13 +1,14 @@
 // vi.unmock must run before the module is imported (tests/setup.ts mocks it globally)
 vi.unmock('./websocket')
 
-// FE-WSCORE-001 to FE-WSCORE-014
+// FE-WSCORE-001 to FE-WSCORE-016
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../tests/helpers/msw/server'
 import {
   connect, disconnect, joinTrip, leaveTrip, getActiveTrips,
   setRefetchCallback, setPreReconnectHook,
+  addReconnectListener, removeReconnectListener,
 } from './websocket'
 
 class MockWebSocket {
@@ -263,5 +264,49 @@ describe('websocket > connection lifecycle', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(MockWebSocket.instances).toHaveLength(2)
+  })
+})
+
+describe('websocket > reconnect listeners', () => {
+  it('FE-WSCORE-015: fires only on a real reconnect, not the initial connect', async () => {
+    const onReconnect = vi.fn()
+    addReconnectListener(onReconnect)
+
+    const sock = await openSocket()
+    sock.onopen!()
+    expect(onReconnect).not.toHaveBeenCalled()
+
+    sock.onclose!()
+    await vi.advanceTimersByTimeAsync(1001)
+    await vi.advanceTimersByTimeAsync(0)
+
+    const reconnected = lastSocket()
+    expect(MockWebSocket.instances).toHaveLength(2)
+    reconnected.onopen!()
+    expect(onReconnect).toHaveBeenCalledTimes(1)
+
+    removeReconnectListener(onReconnect)
+    reconnected.onclose!()
+    await vi.advanceTimersByTimeAsync(2001)
+    await vi.advanceTimersByTimeAsync(0)
+    lastSocket().onopen!()
+    expect(onReconnect).toHaveBeenCalledTimes(1)
+  })
+
+  it('FE-WSCORE-016: a throwing reconnect listener is logged, not propagated', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const throwing = () => { throw new Error('domain refetch blew up') }
+    addReconnectListener(throwing)
+
+    const sock = await openSocket()
+    sock.onclose!()
+    await vi.advanceTimersByTimeAsync(1001)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(() => lastSocket().onopen!()).not.toThrow()
+    expect(consoleError).toHaveBeenCalledWith(
+      'WebSocket reconnect listener error:',
+      expect.any(Error),
+    )
   })
 })

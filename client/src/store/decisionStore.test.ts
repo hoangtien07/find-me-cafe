@@ -130,4 +130,37 @@ describe('decisionStore > applyEvent', () => {
     useDecisionStore.getState().applyEvent({ type: 'decision:participant-joined', participant: participant(1) })
     expect(useDecisionStore.getState().participants).toHaveLength(0)
   })
+
+  it('FE-DEC-009 openSession drops the previous room when the session id changes', () => {
+    useDecisionStore.getState().openSession(session())
+    useDecisionStore.getState().setParticipants([participant(1)])
+    useDecisionStore.getState().setCandidates([candidate(5)])
+    useDecisionStore.getState().setLatestResult({
+      run: {
+        id: 7,
+        decision_session_id: 2,
+        strategy_version: 'resolver-v1',
+        status: 'completed',
+        input_hash: null,
+        created_at: '2026-09-24 08:30:00',
+        completed_at: '2026-09-24 08:30:01',
+      },
+      items: [],
+    })
+    useDecisionStore.getState().setSelection(selection())
+
+    useDecisionStore.getState().openSession(session({ id: 3 }))
+    const s = useDecisionStore.getState()
+    expect(s.sessionId).toBe(3)
+    expect(s.participants).toHaveLength(0)
+    expect(s.candidates).toHaveLength(0)
+    expect(s.latestResult).toBeNull()
+    expect(s.pendingResultRunId).toBeNull()
+    expect(s.selection).toBeNull()
+
+    // Re-opening the same room keeps the already-loaded data.
+    useDecisionStore.getState().setParticipants([participant(2)])
+    useDecisionStore.getState().openSession(session({ id: 3 }))
+    expect(useDecisionStore.getState().participants).toHaveLength(1)
+  })
 })
