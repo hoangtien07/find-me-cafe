@@ -231,4 +231,61 @@ describe('DecisionService', () => {
       expect(view.deal_breakers).toEqual([]);
     });
   });
+
+  describe('candidates', () => {
+    const addPlace = (tripId: number, name = 'Cà phê Vợt') => {
+      const res = testDb
+        .prepare(
+          "INSERT INTO places (trip_id, name, lat, lng, address, price, currency) VALUES (?, ?, 10.77, 106.7, 'Q1', 45000, 'VND')",
+        )
+        .run(tripId, name);
+      return Number(res.lastInsertRowid);
+    };
+
+    it('pins a trip place with a frozen evidence snapshot and broadcasts it', () => {
+      const s = svc.create(1, { title: 'X' });
+      const placeId = addPlace(s.trip_id);
+      const c = svc.addCandidate(s.id, placeId, { type: 'host', id: 1 });
+      expect(c.place_id).toBe(placeId);
+      expect(c.added_by_type).toBe('host');
+      expect(c.snapshot?.name).toBe('Cà phê Vợt');
+      expect(c.snapshot?.price).toBe(45000);
+      expect(broadcast).toHaveBeenCalledWith(
+        String(s.trip_id),
+        'decision:candidate-added',
+        { candidate: expect.objectContaining({ id: c.id }) },
+      );
+      expect(svc.listCandidates(s.id)).toHaveLength(1);
+    });
+
+    it('the snapshot survives the place being edited afterwards', () => {
+      const s = svc.create(1, { title: 'X' });
+      const placeId = addPlace(s.trip_id);
+      svc.addCandidate(s.id, placeId, { type: 'host', id: 1 });
+      testDb.prepare("UPDATE places SET name = 'Đổi tên', price = 999 WHERE id = ?").run(placeId);
+      expect(svc.listCandidates(s.id)[0]!.snapshot?.name).toBe('Cà phê Vợt');
+    });
+
+    it('rejects a place from another trip and a duplicate pin', () => {
+      const s = svc.create(1, { title: 'X' });
+      const s2 = svc.create(1, { title: 'Y' });
+      const foreign = addPlace(s2.trip_id);
+      expect(() => svc.addCandidate(s.id, foreign, { type: 'host', id: 1 })).toThrow(NotFoundError);
+      const placeId = addPlace(s.trip_id);
+      svc.addCandidate(s.id, placeId, { type: 'host', id: 1 });
+      expect(() => svc.addCandidate(s.id, placeId, { type: 'host', id: 1 })).toThrow(ValidationError);
+    });
+
+    it('removes a candidate and broadcasts candidate-removed', () => {
+      const s = svc.create(1, { title: 'X' });
+      const c = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+      svc.removeCandidate(s.id, c.id);
+      expect(svc.listCandidates(s.id)).toHaveLength(0);
+      expect(broadcast).toHaveBeenCalledWith(String(s.trip_id), 'decision:candidate-removed', {
+        decisionSessionId: s.id,
+        candidateId: c.id,
+      });
+      expect(() => svc.removeCandidate(s.id, c.id)).toThrow(NotFoundError);
+    });
+  });
 });
