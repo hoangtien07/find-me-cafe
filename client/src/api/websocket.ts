@@ -24,6 +24,12 @@ let mySocketId: string | null = null
 let connecting = false
 /** Hook run before refetchCallback on reconnect. Awaited so mutations land first. */
 let preReconnectHook: (() => Promise<void>) | null = null
+/**
+ * Domains whose state lives outside tripStore (e.g. decision rooms) register
+ * here to re-pull after a reconnect: the socket layer only rehydrates trip
+ * state, so events broadcast during the outage would otherwise stay missed.
+ */
+const reconnectListeners = new Set<() => void>()
 
 export function getSocketId(): string | null {
   return mySocketId
@@ -47,6 +53,14 @@ export function setRefetchCallback(fn: RefetchCallback | null): void {
  */
 export function setPreReconnectHook(fn: (() => Promise<void>) | null): void {
   preReconnectHook = fn
+}
+
+export function addReconnectListener(fn: () => void): void {
+  reconnectListeners.add(fn)
+}
+
+export function removeReconnectListener(fn: () => void): void {
+  reconnectListeners.delete(fn)
 }
 
 function getWsUrl(wsToken: string): string {
@@ -99,7 +113,7 @@ function scheduleReconnect(): void {
   reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
 }
 
-async function connectInternal(_isReconnect = false): Promise<void> {
+async function connectInternal(isReconnect = false): Promise<void> {
   if (connecting) return
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return
@@ -146,6 +160,11 @@ async function connectInternal(_isReconnect = false): Promise<void> {
           doRefetch()
         }
       }
+    }
+    if (isReconnect) {
+      reconnectListeners.forEach(fn => {
+        try { fn() } catch (err: unknown) { console.error('WebSocket reconnect listener error:', err) }
+      })
     }
   }
 

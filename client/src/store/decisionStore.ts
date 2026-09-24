@@ -89,7 +89,20 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
       selection: null,
     }),
 
-  openSession: session => set({ sessionId: session.id, session }),
+  openSession: session =>
+    set(s =>
+      s.sessionId != null && String(s.sessionId) !== String(session.id)
+        ? {
+            sessionId: session.id,
+            session,
+            participants: [],
+            candidates: [],
+            latestResult: null,
+            pendingResultRunId: null,
+            selection: null,
+          }
+        : { sessionId: session.id, session },
+    ),
   setParticipants: participants => set({ participants }),
   setCandidates: candidates => set({ candidates }),
   setLatestResult: latestResult => set({ latestResult }),
