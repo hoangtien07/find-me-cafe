@@ -147,6 +147,48 @@ describe('DecisionResolverService', () => {
     await expect(resolver.resolve(s.id)).rejects.toThrow('No participants');
   });
 
+  it('a failed resolve restores the prior status and the room can retry', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
+    joinWithOrigin(s.id, 'An', 10.77, 106.69);
+    const fail = vi.spyOn(TravelMatrixService.prototype, 'computeSessionMatrix')
+      .mockRejectedValueOnce(new Error('matrix down'));
+
+    await expect(resolver.resolve(s.id)).rejects.toThrow('matrix down');
+    // Not stuck on 'resolving': the prior status is restored and broadcast.
+    expect(decisions.getSession(s.id)!.status).toBe('collecting');
+    expect(broadcast).toHaveBeenCalledWith(String(s.trip_id), 'decision:status-updated', {
+      decisionSessionId: s.id,
+      status: 'collecting',
+    });
+    const types = testDb
+      .prepare('SELECT type FROM decision_events WHERE decision_session_id = ?')
+      .all(s.id)
+      .map((r) => (r as { type: string }).type);
+    expect(types).toContain('resolve_failed');
+
+    // The room is not bricked — a retry resolves normally.
+    fail.mockRestore();
+    const result = await resolver.resolve(s.id);
+    expect(result.run.status).toBe('completed');
+    expect(decisions.getSession(s.id)!.status).toBe('resolved');
+  });
+
+  it('a failure after the run insert marks it failed and still restores status', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
+    joinWithOrigin(s.id, 'An', 10.77, 106.69);
+    // Force the score-persist step to fail after the run row committed.
+    testDb.exec('DROP TABLE recommendation_scores');
+
+    await expect(resolver.resolve(s.id)).rejects.toThrow();
+    expect(decisions.getSession(s.id)!.status).toBe('collecting');
+    const run = testDb
+      .prepare('SELECT status FROM recommendation_runs WHERE decision_session_id = ?')
+      .get(s.id) as { status: string };
+    expect(run.status).toBe('failed');
+  });
+
   it('select locks a venue: one row, linked run, status selected, both broadcasts', async () => {
     const s = decisions.create(1, { title: 'X' });
     const pid = addPlace(s.trip_id, 'Cafe A', 10.775, 106.7);
@@ -189,7 +231,7 @@ describe('DecisionResolverService', () => {
     const types = testDb
       .prepare('SELECT type FROM decision_events WHERE decision_session_id = ? ORDER BY id')
       .all(s.id)
-      .map((r) => r.type);
+      .map((r) => (r as { type: string }).type);
     for (const t of [
       'decision_created', 'invite_created', 'participant_joined',
       'participant_context_submitted', 'candidate_added',
