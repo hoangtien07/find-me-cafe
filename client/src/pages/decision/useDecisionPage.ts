@@ -7,7 +7,7 @@ import { placeRepo } from '../../repo/placeRepo'
 import { decisionPlacesRepo, type VenuePick, type VenueSuggestion } from '../../repo/decisionPlaces'
 import { useDecisionStore } from '../../store/decisionStore'
 import { useDecisionRealtime } from '../../hooks/useDecisionRealtime'
-import type { DecisionCandidate } from '@trek/shared'
+import type { DecisionCandidate, TrackDecisionEventRequest } from '@trek/shared'
 import type { Place } from '../../types'
 
 /**
@@ -248,6 +248,16 @@ export function useDecisionPage() {
     [sessionId],
   )
 
+  // "Điều hướng" — the host's own navigation click, self-reported like the
+  // participant's (M2-11). Fire-and-forget: telemetry must never block a
+  // real navigation.
+  const handleTrackEvent = useCallback(
+    (event: TrackDecisionEventRequest['event']) => {
+      void decisionApi.track(sessionId, { event }).catch(() => {})
+    },
+    [sessionId],
+  )
+
   // Trip places not yet pinned are the addable picker.
   const candidatePlaceIds = new Set(candidates.map((c: DecisionCandidate) => Number(c.place_id)))
   const addablePlaces = tripPlaces.filter(p => !candidatePlaceIds.has(Number(p.id)))
@@ -297,5 +307,6 @@ export function useDecisionPage() {
     handleResolve,
     handleSelect,
     handleFeedback,
+    handleTrackEvent,
   }
 }

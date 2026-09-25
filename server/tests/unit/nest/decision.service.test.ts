@@ -348,4 +348,55 @@ describe('DecisionService', () => {
       expect(() => svc.removeCandidate(s.id, c.id)).toThrow(NotFoundError);
     });
   });
+
+  describe('metrics (M2-11)', () => {
+    it('aggregates the funnel: zero-filled counts, intake progress, feedback tail', () => {
+      const telemetry = new DecisionTelemetryService(new DatabaseService(testDb));
+      const s = svc.create(1, { title: 'X' });
+      const { token } = svc.createInvite(s.id, 1);
+      const joined = svc.joinByInvite(token, 'An')!;
+      svc.updateParticipantContext(joined.participant.id, s.id, {
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        preferences: [],
+        deal_breakers: [],
+      });
+      const placeId = Number(
+        testDb.prepare("INSERT INTO places (trip_id, name) VALUES (?, 'Quán')").run(s.trip_id).lastInsertRowid,
+      );
+      const c = svc.addCandidate(s.id, placeId, { type: 'host', id: 1 });
+      telemetry.track(s.id, 'navigation_opened', { participantId: joined.participant.id });
+      svc.addFeedback(
+        s.id,
+        { candidate_id: c.id, fit_score: 4, would_choose_again: true, regret_reason: null },
+        joined.participant.id,
+      );
+      svc.addFeedback(s.id, { candidate_id: c.id, fit_score: 2, would_choose_again: false }, null);
+
+      const m = telemetry.metrics(s.id);
+      expect(m.decision_session_id).toBe(s.id);
+      expect(m.participants).toBe(1);
+      expect(m.contexts_submitted).toBe(1);
+      expect(m.candidates).toBe(1);
+      expect(m.counts.decision_created).toBe(1);
+      expect(m.counts.invite_created).toBe(1);
+      expect(m.counts.participant_joined).toBe(1);
+      expect(m.counts.participant_context_submitted).toBe(1);
+      expect(m.counts.candidate_added).toBe(1);
+      expect(m.counts.navigation_opened).toBe(1);
+      expect(m.counts.feedback_submitted).toBe(2);
+      expect(m.counts.venue_selected).toBe(0); // zero-filled, not absent
+      expect(m.counts.resolve_completed).toBe(0);
+      expect(m.feedback.total).toBe(2);
+      expect(m.feedback.would_choose_again_rate).toBeCloseTo(0.5);
+      expect(m.feedback.avg_fit).toBeCloseTo(3);
+    });
+
+    it('reports null rates — not zero — on a room with no feedback', () => {
+      const telemetry = new DecisionTelemetryService(new DatabaseService(testDb));
+      const s = svc.create(1, { title: 'X' });
+      const m = telemetry.metrics(s.id);
+      expect(m.feedback).toEqual({ total: 0, would_choose_again_rate: null, avg_fit: null });
+      expect(m.counts.participant_joined).toBe(0);
+    });
+  });
 });

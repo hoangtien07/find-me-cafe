@@ -63,6 +63,7 @@ export default function DecisionPage() {
     handleResolve,
     handleSelect,
     handleFeedback,
+    handleTrackEvent,
   } = useDecisionPage()
 
   if (isLoading || !session) {
@@ -135,6 +136,7 @@ export default function DecisionPage() {
             sessionStatus={session.status}
             onSelect={handleSelect}
             onFeedback={handleFeedback}
+            onNavigate={() => handleTrackEvent('navigation_opened')}
           />
         )}
 
@@ -422,12 +424,14 @@ function RecommendationList({
   sessionStatus,
   onSelect,
   onFeedback,
+  onNavigate,
 }: {
   result: RecommendationResult
   selectedId: number | string | null
   sessionStatus: string
   onSelect: (candidateId: number | string) => void
   onFeedback: (candidateId: number, fit: number, again: boolean, reason: string | null) => void
+  onNavigate: () => void
 }) {
   return (
     <section>
@@ -485,6 +489,7 @@ function RecommendationList({
                     href={`https://www.google.com/maps/dir/?api=1&destination=${item.candidate.snapshot.lat},${item.candidate.snapshot.lng}`}
                     target="_blank"
                     rel="noreferrer"
+                    onClick={onNavigate}
                   >
                     <Navigation size={13} /> Điều hướng
                   </a>

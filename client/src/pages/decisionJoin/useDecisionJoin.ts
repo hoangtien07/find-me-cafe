@@ -36,6 +36,15 @@ export function useDecisionJoin() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const viewedRef = useRef(false)
+
+  // Self-report the first time a run actually lands on this device — the
+  // funnel step between "resolved" and "navigation_opened" (M2-11).
+  useEffect(() => {
+    if (result == null || viewedRef.current || !participantToken) return
+    viewedRef.current = true
+    void decisionParticipantApi.track(participantToken, { event: 'recommendation_viewed' }).catch(() => {})
+  }, [result, participantToken])
 
   // 1. Resolve the invite token → preview (or a restored session/result).
   useEffect(() => {
