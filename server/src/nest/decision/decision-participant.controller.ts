@@ -8,13 +8,13 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse, RecommendationResult } from '@trek/shared';
+import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse, DecisionVoteTally, RecommendationResult } from '@trek/shared';
 import { DecisionService } from './decision.service';
 import { DecisionResolverService } from './resolver/resolver.service';
 import { DecisionTelemetryService } from './decision-telemetry.service';
 import { DecisionParticipantGuard } from './decision-participant.guard';
 import { CurrentParticipant } from './current-participant.decorator';
-import { DecisionParticipantContextDto, DecisionTelemetryDto } from './decision.dto';
+import { DecisionParticipantContextDto, DecisionTelemetryDto, DecisionVoteDto } from './decision.dto';
 
 /**
  * /api/decision-participant — the anonymous participant's scoped surface.
@@ -80,5 +80,22 @@ export class DecisionParticipantController {
   track(@CurrentParticipant() p: DecisionParticipant, @Body() body: DecisionTelemetryDto): { ok: boolean } {
     this.telemetry.track(p.decision_session_id, body.event, { participantId: p.id });
     return { ok: true };
+  }
+
+  /**
+   * PUT /api/decision-participant/vote — the optional final vote (M2-10):
+   * socially confirm one of the recommended venues. Re-casting changes the
+   * vote; the host's trip room hears the new tally live.
+   */
+  @Put('vote')
+  @HttpCode(200)
+  vote(@CurrentParticipant() p: DecisionParticipant, @Body() body: DecisionVoteDto): DecisionVoteTally {
+    return this.decisions.castVote(p.decision_session_id, p.id, Number(body.candidate_id));
+  }
+
+  /** GET /api/decision-participant/votes — the group's tally so far (M2-10). */
+  @Get('votes')
+  votes(@CurrentParticipant() p: DecisionParticipant): DecisionVoteTally {
+    return this.decisions.voteTally(p.decision_session_id);
   }
 }

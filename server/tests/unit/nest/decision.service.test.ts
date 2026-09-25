@@ -446,4 +446,54 @@ describe('DecisionService', () => {
       expect(() => svc.upsertVenueContext(s.id, foreign.id, { noise_level: 'QUIET' })).toThrow(NotFoundError);
     });
   });
+
+  describe('votes (M2-10)', () => {
+    const addPlace = (tripId: number) =>
+      Number(
+        testDb
+          .prepare("INSERT INTO places (trip_id, name, lat, lng) VALUES (?, 'Cà phê', 10.77, 106.7)")
+          .run(tripId).lastInsertRowid,
+      );
+    const joinNamed = (sessionId: number, name: string) => {
+      const { token } = svc.createInvite(sessionId, 1);
+      return svc.joinByInvite(token, name)!.participant;
+    };
+
+    it('one changeable vote per participant; tally carries voter names and broadcasts live', () => {
+      const s = svc.create(1, { title: 'X' });
+      const c1 = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+      const c2 = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+      const an = joinNamed(s.id, 'An');
+      const binh = joinNamed(s.id, 'Bình');
+
+      const t1 = svc.castVote(s.id, an.id, c1.id);
+      svc.castVote(s.id, binh.id, c1.id);
+      expect(t1.total).toBe(1);
+      const t2 = svc.voteTally(s.id);
+      expect(t2.total).toBe(2);
+      expect(t2.votes).toHaveLength(1);
+      expect(t2.votes[0]).toMatchObject({ candidate_id: c1.id, count: 2, voter_names: ['An', 'Bình'] });
+      expect(broadcast).toHaveBeenCalledWith(
+        String(s.trip_id),
+        'decision:votes-updated',
+        { decisionSessionId: s.id, votes: expect.objectContaining({ total: 1 }) },
+      );
+
+      // Changing your mind moves the single row — no double counting.
+      const t3 = svc.castVote(s.id, an.id, c2.id);
+      expect(t3.total).toBe(2);
+      expect(t3.votes.find(v => v.candidate_id === c1.id)?.count).toBe(1);
+      expect(t3.votes.find(v => v.candidate_id === c2.id)?.voter_names).toEqual(['An']);
+    });
+
+    it('rejects votes for foreign candidates and unknown participants', () => {
+      const s = svc.create(1, { title: 'X' });
+      const s2 = svc.create(1, { title: 'Y' });
+      const foreign = svc.addCandidate(s2.id, addPlace(s2.trip_id), { type: 'host', id: 1 });
+      const an = joinNamed(s.id, 'An');
+      expect(() => svc.castVote(s.id, an.id, foreign.id)).toThrow(NotFoundError);
+      const c = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+      expect(() => svc.castVote(s.id, 9999, c.id)).toThrow(NotFoundError);
+    });
+  });
 });

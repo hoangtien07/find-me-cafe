@@ -4,6 +4,7 @@ import { decisionParticipantApi } from '../../api/decision'
 import { participantSession } from '../../repo/decisionRepo'
 import type {
   DecisionInvitePreview,
+  DecisionVoteTally,
   RecommendationResult,
   UpdateParticipantContextRequest,
 } from '@trek/shared'
@@ -33,6 +34,9 @@ export function useDecisionJoin() {
   const [participantToken, setParticipantToken] = useState<string | null>(participantSession.restore())
   const [participantId, setParticipantId] = useState<number | null>(null)
   const [result, setResult] = useState<RecommendationResult | null>(null)
+  const [votes, setVotes] = useState<DecisionVoteTally | null>(null)
+  const [myVote, setMyVote] = useState<number | string | null>(null)
+  const [voting, setVoting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -63,6 +67,10 @@ export function useDecisionJoin() {
           } catch {
             if (!cancelled) setStage('waiting')
           }
+          try {
+            const v = await decisionParticipantApi.listVotes(existing)
+            if (!cancelled) setVotes(v)
+          } catch { /* tally is optional chrome */ }
         })
         .catch(() => {
           if (cancelled) return
@@ -99,6 +107,9 @@ export function useDecisionJoin() {
         setResult(r)
         setStage('result')
         if (pollRef.current) clearInterval(pollRef.current)
+        try {
+          setVotes(await decisionParticipantApi.listVotes(participantToken))
+        } catch { /* tally is optional chrome */ }
       } catch { /* still resolving */ }
     }, POLL_MS)
     return () => {
@@ -155,6 +166,22 @@ export function useDecisionJoin() {
     [participantToken],
   )
 
+  // M2-10 — the optional final vote: pick one of the recommended venues.
+  // Re-casting changes the vote server-side (one row per participant).
+  const handleVote = useCallback(
+    async (candidateId: number | string) => {
+      if (!participantToken || voting) return
+      setVoting(true)
+      try {
+        setVotes(await decisionParticipantApi.castVote(participantToken, candidateId))
+        setMyVote(candidateId)
+      } catch { /* keep the previous choice */ } finally {
+        setVoting(false)
+      }
+    },
+    [participantToken, voting],
+  )
+
   return {
     stage,
     preview,
@@ -162,10 +189,14 @@ export function useDecisionJoin() {
     setDisplayName,
     participantId,
     result,
+    votes,
+    myVote,
+    voting,
     error,
     submitting,
     handleJoin,
     handleSubmitContext,
     handleNavigate,
+    handleVote,
   }
 }

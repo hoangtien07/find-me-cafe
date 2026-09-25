@@ -6,6 +6,7 @@ import type {
   DecisionSelection,
   DecisionSession,
   DecisionStatus,
+  DecisionVoteTally,
   RecommendationResult,
 } from '@trek/shared'
 
@@ -33,6 +34,7 @@ interface DecisionEventMessage {
   status?: DecisionStatus
   runId?: number | string
   selection?: DecisionSelection
+  votes?: DecisionVoteTally
 }
 
 interface DecisionState {
@@ -49,6 +51,8 @@ interface DecisionState {
   /** Last recommendation-ready run id — pages refetch when it changes. */
   pendingResultRunId: number | string | null
   selection: DecisionSelection | null
+  /** M2-10 — the optional final vote's live tally (host room). */
+  votes: DecisionVoteTally | null
   /**
    * Bumped on every decision:* message handed to applyEvent — lets an
    * in-flight REST snapshot (decisionRepo.open) detect that live events
@@ -63,6 +67,7 @@ interface DecisionState {
   setCandidates: (candidates: DecisionCandidate[]) => void
   setLatestResult: (result: RecommendationResult | null) => void
   setSelection: (selection: DecisionSelection | null) => void
+  setVotes: (votes: DecisionVoteTally | null) => void
   /** The decision:* WS events the useDecisionRealtime listener hands over. */
   applyEvent: (msg: DecisionEventMessage) => void
 }
@@ -83,6 +88,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
   latestResult: null,
   pendingResultRunId: null,
   selection: null,
+  votes: null,
   eventSeq: 0,
 
   reset: () =>
@@ -94,6 +100,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
       latestResult: null,
       pendingResultRunId: null,
       selection: null,
+      votes: null,
     }),
 
   openSession: session =>
@@ -107,6 +114,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
             latestResult: null,
             pendingResultRunId: null,
             selection: null,
+            votes: null,
           }
         : { sessionId: session.id, session },
     ),
@@ -114,6 +122,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
   setCandidates: candidates => set({ candidates }),
   setLatestResult: latestResult => set({ latestResult }),
   setSelection: selection => set({ selection }),
+  setVotes: votes => set({ votes }),
 
   applyEvent: msg => {
     set(s => ({ eventSeq: s.eventSeq + 1 }))
@@ -158,6 +167,12 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
           selection: msg.selection ?? null,
           session: s.session ? { ...s.session, status: 'selected' } : s.session,
         }))
+        return
+      }
+      case 'decision:votes-updated': {
+        // Payload carries the new tally — apply it directly, no refetch.
+        if (!sameRoom(msg.decisionSessionId) || !msg.votes) return
+        set({ votes: msg.votes })
         return
       }
     }

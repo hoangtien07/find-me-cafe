@@ -412,6 +412,7 @@ export const TREK_WS_EVENTS = {
   'decision:status-updated': { scope: 'trip', payload: decisionWsEventPayloads['decision:status-updated'] },
   'decision:recommendation-ready': { scope: 'trip', payload: decisionWsEventPayloads['decision:recommendation-ready'] },
   'decision:selected': { scope: 'trip', payload: decisionWsEventPayloads['decision:selected'] },
+  'decision:votes-updated': { scope: 'trip', payload: decisionWsEventPayloads['decision:votes-updated'] },
 } as const satisfies Record<string, TrekWsEventContract>;
 
 /** Every registered event name. The registry above is the count; this derives from it. */

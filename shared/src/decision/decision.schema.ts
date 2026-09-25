@@ -623,6 +623,7 @@ export const DECISION_EVENT_TYPES = [
   'recommendation_viewed',
   'venue_selected',
   'navigation_opened',
+  'vote_cast',
   'feedback_submitted',
 ] as const;
 export const decisionEventTypeSchema = z.enum(DECISION_EVENT_TYPES);
@@ -638,6 +639,31 @@ export const decisionEventSchema = z.object({
   created_at: z.string(),
 });
 export type DecisionEvent = z.infer<typeof decisionEventSchema>;
+
+/**
+ * M2-10 — the optional final vote (plan §27): each participant may socially
+ * confirm ONE recommended venue anonymously — no TREK account, no socket.
+ * Votes stay changeable until the host selects (one row per participant).
+ */
+export const castVoteRequestSchema = z.object({
+  candidate_id: idSchema,
+});
+export type CastVoteRequest = z.infer<typeof castVoteRequestSchema>;
+
+/** One row of the live tally the host watches — names, not just counts. */
+export const decisionVoteTallyEntrySchema = z.object({
+  candidate_id: idSchema,
+  count: z.number().int().min(0),
+  voter_names: z.array(z.string()),
+});
+export type DecisionVoteTallyEntry = z.infer<typeof decisionVoteTallyEntrySchema>;
+
+/** GET /api/decisions/:id/votes + the decision:votes-updated WS payload. */
+export const decisionVoteTallySchema = z.object({
+  votes: z.array(decisionVoteTallyEntrySchema),
+  total: z.number().int().min(0),
+});
+export type DecisionVoteTally = z.infer<typeof decisionVoteTallySchema>;
 
 /** The only two funnel steps that happen on a participant's device. */
 export const PARTICIPANT_TRACKABLE_EVENTS = ['navigation_opened', 'recommendation_viewed'] as const;

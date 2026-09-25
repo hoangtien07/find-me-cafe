@@ -14,6 +14,7 @@ import type {
   DecisionSessionMetrics,
   DecisionSession,
   DecisionVenueContext,
+  DecisionVoteTally,
   JoinDecisionRequest,
   RecommendationResult,
   TrackDecisionEventRequest,
@@ -63,6 +64,10 @@ export const decisionApi = {
     apiClient.post<{ ok: boolean }>(`/decisions/${id}/telemetry`, data).then(r => r.data),
   metrics: (id: number | string) =>
     apiClient.get<DecisionSessionMetrics>(`/decisions/${id}/metrics`).then(r => r.data),
+
+  /** M2-10 — the optional final vote's live tally (host). */
+  listVotes: (id: number | string) =>
+    apiClient.get<DecisionVoteTally>(`/decisions/${id}/votes`).then(r => r.data),
   upsertVenueContext: (id: number | string, candidateId: number | string, data: UpsertVenueContextRequest) =>
     apiClient
       .put<{ venue_context: DecisionVenueContext }>(`/decisions/${id}/candidates/${candidateId}/context`, data)
@@ -86,4 +91,12 @@ export const decisionParticipantApi = {
     apiClient.get<RecommendationResult>('/decision-participant/result', bearer(token)).then(r => r.data),
   track: (token: string, data: TrackDecisionEventRequest) =>
     apiClient.post<{ ok: boolean }>('/decision-participant/telemetry', data, bearer(token)).then(r => r.data),
+
+  /** M2-10 — cast or change the participant's one vote; returns the new tally. */
+  castVote: (token: string, candidate_id: number | string) =>
+    apiClient.put<DecisionVoteTally>('/decision-participant/vote', { candidate_id }, bearer(token)).then(r => r.data),
+
+  /** M2-10 — the group's tally so far (participant). */
+  listVotes: (token: string) =>
+    apiClient.get<DecisionVoteTally>('/decision-participant/votes', bearer(token)).then(r => r.data),
 }

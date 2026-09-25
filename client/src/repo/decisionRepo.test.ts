@@ -72,6 +72,7 @@ const selection = (over: Partial<DecisionSelection> = {}): DecisionSelection => 
 })
 
 const noRun = () => HttpResponse.json({ error: 'No completed run' }, { status: 404 })
+const noVotes = () => HttpResponse.json({ votes: [], total: 0 })
 
 beforeEach(() => {
   useDecisionStore.getState().reset()
@@ -89,6 +90,7 @@ describe('decisionRepo.open', () => {
       ),
       http.get('/api/decisions/2/candidates', () => HttpResponse.json({ candidates: [candidate(5)] })),
       http.get('/api/decisions/2/recommendations/latest', noRun),
+      http.get('/api/decisions/2/votes', noVotes),
     )
 
     const decision = await decisionRepo.open(2)
@@ -128,6 +130,7 @@ describe('decisionRepo.open', () => {
       }),
       http.get('/api/decisions/2/candidates', () => HttpResponse.json({ candidates: [] })),
       http.get('/api/decisions/2/recommendations/latest', noRun),
+      http.get('/api/decisions/2/votes', noVotes),
     )
 
     await decisionRepo.open(2)
@@ -153,6 +156,7 @@ describe('decisionRepo.open', () => {
       ),
       http.get('/api/decisions/2/candidates', () => HttpResponse.json({ candidates: [candidate(9, { place_id: 109 })] })),
       http.get('/api/decisions/2/recommendations/latest', noRun),
+      http.get('/api/decisions/2/votes', noVotes),
     )
 
     await decisionRepo.open(2)

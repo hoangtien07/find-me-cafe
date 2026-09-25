@@ -101,6 +101,7 @@ export const HANDLED_OUTSIDE_TRIP_STORE = [
   'decision:status-updated',
   'decision:recommendation-ready',
   'decision:selected',
+  'decision:votes-updated',
 ] as const satisfies readonly TrekWsEventName[]
 
 /**

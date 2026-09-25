@@ -18,7 +18,8 @@ const fetchRoom = async (id: number | string) => {
   try {
     latestResult = await decisionApi.latest(id)
   } catch { /* no completed run yet */ }
-  return { seq, ...res, candidates, latestResult }
+  const votes = await decisionApi.listVotes(id)
+  return { seq, ...res, candidates, latestResult, votes }
 }
 
 export const decisionRepo = {
@@ -39,6 +40,7 @@ export const decisionRepo = {
     s.setCandidates(room.candidates)
     s.setLatestResult(room.latestResult)
     s.setSelection(room.selection)
+    s.setVotes(room.votes)
     return room.decision
   },
 

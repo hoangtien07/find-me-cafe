@@ -5456,6 +5456,22 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_decision_venue_contexts_session ON decision_venue_contexts(decision_session_id);
       `);
     },
+    // M2-10 — the optional final vote: one changeable vote per participant,
+    // so the Top-3 can be socially confirmed without a TREK login.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS decision_votes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          candidate_id INTEGER NOT NULL REFERENCES decision_candidates(id) ON DELETE CASCADE,
+          participant_id INTEGER NOT NULL REFERENCES decision_participants(id) ON DELETE CASCADE,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (decision_session_id, participant_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_votes_session ON decision_votes(decision_session_id);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

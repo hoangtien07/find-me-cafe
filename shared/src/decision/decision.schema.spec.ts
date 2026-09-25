@@ -118,7 +118,13 @@ describe('decision contract', () => {
         tradeoffs: ['đồ uống ít nổi bật hơn lựa chọn #2'],
         travel_times: [
           { participant_id: 1, display_name: 'An', duration_seconds: 960, status: 'ok', travel_mode: 'driving' },
-          { participant_id: 2, display_name: 'Bình', duration_seconds: null, status: 'missing_origin', travel_mode: null },
+          {
+            participant_id: 2,
+            display_name: 'Bình',
+            duration_seconds: null,
+            status: 'missing_origin',
+            travel_mode: null,
+          },
         ],
       };
       expect(decisionExplanationSchema.safeParse(exp).success).toBe(true);
@@ -313,6 +319,7 @@ describe('decision contract', () => {
           'decision:recommendation-ready',
           'decision:selected',
           'decision:status-updated',
+          'decision:votes-updated',
         ].sort(),
       );
     });
@@ -344,6 +351,7 @@ describe('decision contract', () => {
           'venue_selected',
           'navigation_opened',
           'feedback_submitted',
+          'vote_cast',
         ].sort(),
       );
     });
