@@ -137,6 +137,7 @@ const FIXTURES: Record<TrekWsEventName, Record<string, unknown>> = {
       max_travel_minutes: 30,
       budget_min: 30000,
       budget_max: 100000,
+      travel_mode: null,
       submitted_at: '2026-09-24 08:00:00',
       created_at: '2026-09-24 08:00:00',
       updated_at: '2026-09-24 08:00:00',
@@ -153,6 +154,7 @@ const FIXTURES: Record<TrekWsEventName, Record<string, unknown>> = {
       max_travel_minutes: 30,
       budget_min: 30000,
       budget_max: 100000,
+      travel_mode: null,
       submitted_at: '2026-09-24 08:00:00',
       created_at: '2026-09-24 08:00:00',
       updated_at: '2026-09-24 08:00:00',
@@ -184,6 +186,13 @@ const FIXTURES: Record<TrekWsEventName, Record<string, unknown>> = {
       selected_at: '2026-09-24 08:00:00',
     },
   },
+  'decision:votes-updated': {
+    decisionSessionId: 2,
+    votes: {
+      votes: [{ candidate_id: 5, count: 2, voter_names: ['An', 'Bình'] }],
+      total: 2,
+    },
+  },
 };
 
 /** Divergent shapes emitted for the same event today (see DRIFT notes in the registry). */
@@ -211,9 +220,9 @@ describe('@trek/shared realtime event registry', () => {
     // 75th-81st: the decision:* set the group-decision room broadcasts to the
     // host's trip room (participants, candidates, lifecycle, recommendation,
     // selection).
-    expect(TREK_WS_TRIP_EVENT_NAMES).toHaveLength(81);
+    expect(TREK_WS_TRIP_EVENT_NAMES).toHaveLength(82);
     expect(TREK_WS_USER_EVENT_NAMES).toHaveLength(32);
-    expect(TREK_WS_EVENT_NAMES).toHaveLength(113);
+    expect(TREK_WS_EVENT_NAMES).toHaveLength(114);
   });
 
   it('WSEVT-REG-002: every name is domain:action shaped and outside the reserved plugin: namespace', () => {

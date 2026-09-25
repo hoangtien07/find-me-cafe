@@ -18,6 +18,7 @@ import type {
   DecisionSession,
   DecisionSessionMetrics,
   DecisionVenueContext,
+  DecisionVoteTally,
   RecommendationResult,
 } from '@trek/shared';
 import { idParamSchema } from '@trek/shared';
@@ -236,6 +237,13 @@ export class DecisionController {
     const sessionId = this.requireHostedSession(user, id);
     this.telemetry.track(sessionId, body.event, { userId: user.id });
     return { ok: true };
+  }
+
+  /** GET /api/decisions/:id/votes — the optional final vote's live tally (M2-10). */
+  @Get(':id/votes')
+  votes(@CurrentUser() user: User, @Param('id') id: string): DecisionVoteTally {
+    const sessionId = this.requireHostedSession(user, id);
+    return this.decisions.voteTally(sessionId);
   }
 
   /** GET /api/decisions/:id/metrics — the basic funnel read-out (M2-11). */

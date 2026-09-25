@@ -26,6 +26,7 @@ export function useDecisionPage() {
   const latestResult = useDecisionStore(s => s.latestResult)
   const pendingResultRunId = useDecisionStore(s => s.pendingResultRunId)
   const selection = useDecisionStore(s => s.selection)
+  const votes = useDecisionStore(s => s.votes)
   const reset = useDecisionStore(s => s.reset)
 
   const [isLoading, setIsLoading] = useState(true)
@@ -308,6 +309,7 @@ export function useDecisionPage() {
     candidates,
     latestResult,
     selection,
+    votes,
     isLoading,
     error,
     inviteLink,

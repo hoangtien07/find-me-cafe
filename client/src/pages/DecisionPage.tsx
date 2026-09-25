@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { PageSpinner } from '../components/shared/Spinner'
-import { Copy, ExternalLink, MapPin, Navigation, Phone, Search, Star, UserCheck, Users, X } from 'lucide-react'
+import { Copy, ExternalLink, MapPin, Navigation, Phone, Search, Star, UserCheck, Users, Vote, X } from 'lucide-react'
 import { useDecisionPage } from './decision/useDecisionPage'
 import { MapViewAuto } from '../components/Map/MapViewAuto'
 import type { Poi } from '../components/Map/poiCategories'
@@ -9,6 +9,7 @@ import type {
   DecisionCandidate,
   DecisionParticipant,
   DecisionParticipantRosterEntry,
+  DecisionVoteTally,
   RecommendationResult,
   UpsertVenueContextRequest,
 } from '@trek/shared'
@@ -41,6 +42,7 @@ export default function DecisionPage() {
     candidates,
     latestResult,
     selection,
+    votes,
     isLoading,
     error,
     inviteLink,
@@ -140,6 +142,7 @@ export default function DecisionPage() {
             onSelect={handleSelect}
             onFeedback={handleFeedback}
             onNavigate={() => handleTrackEvent('navigation_opened')}
+            votes={votes}
           />
         )}
 
@@ -592,6 +595,7 @@ function RecommendationList({
   onSelect,
   onFeedback,
   onNavigate,
+  votes,
 }: {
   result: RecommendationResult
   selectedId: number | string | null
@@ -599,6 +603,7 @@ function RecommendationList({
   onSelect: (candidateId: number | string) => void
   onFeedback: (candidateId: number, fit: number, again: boolean, reason: string | null) => void
   onNavigate: () => void
+  votes: DecisionVoteTally | null
 }) {
   return (
     <section>
@@ -618,6 +623,14 @@ function RecommendationList({
                     {!item.eligible && <span className="ml-2 text-xs text-red-500">bị loại</span>}
                   </div>
                   <div className="text-sm text-accent">{item.explanation?.headline}</div>
+                  {(() => {
+                    const entry = votes?.votes.find(v => String(v.candidate_id) === String(item.candidate_id))
+                    return entry ? (
+                      <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-content-secondary">
+                        <Vote size={11} /> {entry.count} oy{entry.voter_names.length > 0 ? ` · ${entry.voter_names.join(', ')}` : ''}
+                      </div>
+                    ) : null
+                  })()}
                 </div>
                 {/* No visible % — internal strategy score stays off consumer UI (M2-06). */}
               </div>

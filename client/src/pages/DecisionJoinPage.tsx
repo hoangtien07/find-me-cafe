@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { MapPin, Navigation, Users } from 'lucide-react'
+import { MapPin, Navigation, Users, Vote } from 'lucide-react'
 import { PageSpinner } from '../components/shared/Spinner'
 import { useDecisionJoin } from './decisionJoin/useDecisionJoin'
 import type { DecisionTravelMode, UpdateParticipantContextRequest } from '@trek/shared'
@@ -25,11 +25,15 @@ export default function DecisionJoinPage() {
     setDisplayName,
     participantId,
     result,
+    votes,
+    myVote,
+    voting,
     error,
     submitting,
     handleJoin,
     handleSubmitContext,
     handleNavigate,
+    handleVote,
   } = useDecisionJoin()
 
   return (
@@ -97,6 +101,8 @@ export default function DecisionJoinPage() {
                 const mine = item.explanation?.travel_times.find(
                   tt => participantId != null && String(tt.participant_id) === String(participantId),
                 )
+                const tally = votes?.votes.find(v => String(v.candidate_id) === String(item.candidate_id))
+                const voted = myVote != null && String(myVote) === String(item.candidate_id)
                 return (
                   <li key={item.id} className="rounded-xl border border-edge p-4">
                     <div className="font-semibold">
@@ -111,15 +117,32 @@ export default function DecisionJoinPage() {
                         {mine.travel_mode ? ` · ${MODE_LABELS[mine.travel_mode]}` : ''}
                       </div>
                     )}
-                    {snap?.lat != null && snap?.lng != null && (
-                      <button
-                        type="button"
-                        onClick={() => handleNavigate(snap.lat!, snap.lng!)}
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-text"
-                      >
-                        <Navigation size={13} /> Điều hướng
-                      </button>
-                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {snap?.lat != null && snap?.lng != null && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate(snap.lat!, snap.lng!)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-text"
+                        >
+                          <Navigation size={13} /> Điều hướng
+                        </button>
+                      )}
+                      {item.eligible && (
+                        <button
+                          type="button"
+                          disabled={voting}
+                          onClick={() => handleVote(item.candidate_id)}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${voted ? 'bg-emerald-600 text-white' : 'bg-surface-hover text-content'}`}
+                        >
+                          {voted ? '✓ Oyunuz' : 'Oy ver'}
+                        </button>
+                      )}
+                      {tally && (
+                        <span className="inline-flex items-center gap-1 text-xs text-content-faint">
+                          <Vote size={11} /> {tally.count}{tally.voter_names.length > 0 ? ` · ${tally.voter_names.join(', ')}` : ''}
+                        </span>
+                      )}
+                    </div>
                   </li>
                 )
               })}

@@ -16,6 +16,7 @@ import type {
   DecisionStatus,
   DecisionTravelMode,
   DecisionVenueContext,
+  DecisionVoteTally,
   UpdateDecisionRequest,
   UpdateParticipantContextRequest,
   UpsertVenueContextRequest,
@@ -812,6 +813,65 @@ export class DecisionService {
       { candidateId: body.candidate_id, fitScore: body.fit_score },
     );
     return { ...row, would_choose_again: Boolean(row.would_choose_again) } as unknown as DecisionFeedback;
+  }
+
+  /**
+   * M2-10 — the optional final vote. One changeable vote per participant so
+   * the Top-3 can be socially confirmed anonymously; re-casting updates the
+   * same row (UNIQUE(session, participant)). The host's trip room hears the
+   * new tally on decision:votes-updated.
+   */
+  castVote(sessionId: number, participantId: number, candidateId: number): DecisionVoteTally {
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError('Decision not found');
+    const participant = this.db.get<{ id: number }>(
+      'SELECT id FROM decision_participants WHERE id = ? AND decision_session_id = ?',
+      participantId,
+      sessionId,
+    );
+    if (!participant) throw new NotFoundError('Participant not found in this decision');
+    const candidate = this.db.get<{ id: number }>(
+      'SELECT id FROM decision_candidates WHERE id = ? AND decision_session_id = ?',
+      candidateId,
+      sessionId,
+    );
+    if (!candidate) throw new NotFoundError('Candidate not found in this decision');
+    this.db.run(
+      `INSERT INTO decision_votes (decision_session_id, candidate_id, participant_id)
+       VALUES (?, ?, ?)
+       ON CONFLICT (decision_session_id, participant_id)
+       DO UPDATE SET candidate_id = excluded.candidate_id, updated_at = CURRENT_TIMESTAMP`,
+      sessionId,
+      candidateId,
+      participantId,
+    );
+    this.telemetry.track(sessionId, 'vote_cast', { participantId }, { candidateId });
+    const tally = this.voteTally(sessionId);
+    this.realtime.broadcast(String(session.trip_id), 'decision:votes-updated', {
+      decisionSessionId: sessionId,
+      votes: tally,
+    });
+    return tally;
+  }
+
+  /** The live tally — one entry per voted candidate, voter names included. */
+  voteTally(sessionId: number): DecisionVoteTally {
+    const rows = this.db.all<{ candidate_id: number; count: number; names: string }>(
+      `SELECT v.candidate_id, COUNT(*) AS count,
+              GROUP_CONCAT(p.display_name, '␟') AS names
+       FROM decision_votes v
+       JOIN decision_participants p ON p.id = v.participant_id
+       WHERE v.decision_session_id = ?
+       GROUP BY v.candidate_id
+       ORDER BY count DESC, v.candidate_id`,
+      sessionId,
+    );
+    const votes = rows.map(r => ({
+      candidate_id: r.candidate_id,
+      count: r.count,
+      voter_names: r.names.split('␟'),
+    }));
+    return { votes, total: votes.reduce((n, v) => n + v.count, 0) };
   }
 
   /** Broadcast a participant row on the technical trip's room. */

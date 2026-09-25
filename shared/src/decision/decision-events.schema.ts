@@ -4,6 +4,7 @@ import {
   decisionParticipantSchema,
   decisionSelectionSchema,
   decisionStatusSchema,
+  decisionVoteTallySchema,
 } from './decision.schema';
 
 import { z } from 'zod';
@@ -31,6 +32,8 @@ export const decisionWsEventPayloads = {
    */
   'decision:recommendation-ready': z.object({ decisionSessionId: id, runId: idSchema }),
   'decision:selected': z.object({ decisionSessionId: id, selection: decisionSelectionSchema }),
+  /** M2-10 — carries the full new tally: it is small and saves the refetch. */
+  'decision:votes-updated': z.object({ decisionSessionId: id, votes: decisionVoteTallySchema }),
 } as const;
 
 export const DECISION_WS_EVENT_NAMES = Object.keys(
