@@ -15,7 +15,7 @@ import { DecisionTelemetryService } from '../decision-telemetry.service';
 import { NotFoundError, ValidationError } from '../../common/domain-errors';
 import { evaluateConstraints } from './constraint-engine';
 import { computeFairness } from './fairness-engine';
-import { scoreCandidate, RESOLVER_V1_STRATEGY } from './ranking-engine';
+import { scoreCandidate, RESOLVER_STRATEGY } from './ranking-engine';
 import { explainCandidate } from './explanation-engine';
 import type { ParticipantContext } from './resolver.types';
 
@@ -65,7 +65,7 @@ export class DecisionResolverService {
         .createHash('sha256')
         .update(
           JSON.stringify({
-            v: RESOLVER_V1_STRATEGY,
+            v: RESOLVER_STRATEGY,
             participants: participants.map((p) => ({
               id: p.participant.id,
               o: [p.participant.origin_lat, p.participant.origin_lng],
@@ -86,7 +86,7 @@ export class DecisionResolverService {
           .prepare(
             "INSERT INTO recommendation_runs (decision_session_id, strategy_version, status, input_hash) VALUES (?, ?, 'running', ?)",
           )
-          .run(sessionId, RESOLVER_V1_STRATEGY, inputHash);
+          .run(sessionId, RESOLVER_STRATEGY, inputHash);
         return Number(res.lastInsertRowid);
       });
 
