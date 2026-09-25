@@ -1,4 +1,5 @@
 import { idSchema, nonEmptyString } from '../common/primitives.schema';
+import { placeHoursPeriodSchema } from '../maps/maps.schema';
 
 import { z } from 'zod';
 
@@ -102,24 +103,80 @@ export type DecisionExplanation = z.infer<typeof decisionExplanationSchema>;
  * different row — the snapshot pins name/coords/provider ids/price at candidate
  * time so a recommendation run stays reproducible after the place is edited.
  */
+/**
+ * Place facts the details endpoint reads off provider data (OSM tags today).
+ * Bounded rather than a record: this is the raw material the venue-context
+ * pass (M2-08) scores, so the vocabulary is fixed here.
+ */
+export const decisionCandidateFactsSchema = z.object({
+  cuisine: z.string().nullable().optional(),
+  menu_url: z.string().nullable().optional(),
+  outdoor_seating: z.string().nullable().optional(),
+  takeaway: z.string().nullable().optional(),
+  delivery: z.string().nullable().optional(),
+  wheelchair: z.string().nullable().optional(),
+  vegetarian: z.string().nullable().optional(),
+  vegan: z.string().nullable().optional(),
+  internet_access: z.string().nullable().optional(),
+});
+export type DecisionCandidateFacts = z.infer<typeof decisionCandidateFactsSchema>;
+
 export const decisionCandidateSnapshotSchema = z.object({
   name: z.string(),
   lat: z.number().nullable().optional(),
   lng: z.number().nullable().optional(),
   address: z.string().nullable().optional(),
   google_place_id: z.string().nullable().optional(),
+  google_ftid: z.string().nullable().optional(),
   amap_poi_id: z.string().nullable().optional(),
   osm_id: z.string().nullable().optional(),
   price: z.number().nullable().optional(),
   currency: z.string().nullable().optional(),
   rating: z.number().nullable().optional(),
-  opening_hours: z.unknown().nullable().optional(),
+  rating_count: z.number().int().nullable().optional(),
+  /** Opening-hours evidence: localised display lines plus machine-readable
+   * periods (the same shape the maps details endpoint returns), so the
+   * CLOSED_AT_DECISION_TIME constraint can evaluate rather than display. */
+  opening_weekdays: z.array(z.string()).nullable().optional(),
+  opening_periods: z.array(placeHoursPeriodSchema).nullable().optional(),
+  opening_special_days: z.array(z.string()).nullable().optional(),
+  open_now: z.boolean().nullable().optional(),
+  facts: decisionCandidateFactsSchema.nullable().optional(),
+  website: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  google_maps_url: z.string().nullable().optional(),
+  /** Which provider answered the details lookup ('trek-places',
+   * 'openstreetmap', 'google', 'amap'; 'quick-add' when typed by hand). */
+  source: z.string().nullable().optional(),
+  /** ISO time the evidence was fetched — staleness provenance for the run. */
+  retrieved_at: z.string().nullable().optional(),
   /** The TREK category name at snapshot time — what veto_category checks. */
   category: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
 });
 export type DecisionCandidateSnapshot = z.infer<typeof decisionCandidateSnapshotSchema>;
+
+/**
+ * Provider evidence the host just fetched from /api/maps/details — carried on
+ * the add-candidate body so the snapshot records what the host saw, with
+ * provenance, without a second provider round trip server-side. The place row
+ * already carries name/coords/ids/website/phone/image_url; this covers the
+ * parts a Place has no column for.
+ */
+export const decisionCandidateEvidenceSchema = z.object({
+  source: z.string(),
+  retrieved_at: z.string(),
+  rating: z.number().nullable().optional(),
+  rating_count: z.number().int().nullable().optional(),
+  open_now: z.boolean().nullable().optional(),
+  opening_weekdays: z.array(z.string()).nullable().optional(),
+  opening_periods: z.array(placeHoursPeriodSchema).nullable().optional(),
+  opening_special_days: z.array(z.string()).nullable().optional(),
+  facts: decisionCandidateFactsSchema.nullable().optional(),
+  google_maps_url: z.string().nullable().optional(),
+});
+export type DecisionCandidateEvidence = z.infer<typeof decisionCandidateEvidenceSchema>;
 
 // ── Entities (wire rows) ───────────────────────────────────────────────────
 
@@ -462,6 +519,7 @@ export type JoinDecisionRequest = z.infer<typeof joinDecisionRequestSchema>;
 
 export const addDecisionCandidateRequestSchema = z.object({
   place_id: idSchema,
+  evidence: decisionCandidateEvidenceSchema.optional(),
 });
 export type AddDecisionCandidateRequest = z.infer<typeof addDecisionCandidateRequestSchema>;
 

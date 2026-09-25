@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import crypto from 'node:crypto';
 import type {
   DecisionCandidate,
+  DecisionCandidateEvidence,
   DecisionConstraint,
   DecisionFeedback,
   DecisionParticipant,
@@ -498,6 +499,7 @@ export class DecisionService {
     sessionId: number,
     placeId: number,
     addedBy: { type: 'host' | 'participant' | 'system'; id: number | null },
+    evidence?: DecisionCandidateEvidence,
   ): DecisionCandidate {
     const session = this.getSession(sessionId);
     if (!session) throw new NotFoundError('Decision not found');
@@ -527,19 +529,54 @@ export class DecisionService {
       lng: place.lng ?? null,
       address: place.address ?? null,
       google_place_id: place.google_place_id ?? null,
+      google_ftid: place.google_ftid ?? null,
+      osm_id: place.osm_id ?? null,
+      amap_poi_id: place.amap_poi_id ?? null,
       price: place.price ?? null,
       currency: place.currency ?? null,
-      rating: ratingRow?.r ?? null,
+      // Provider rating (evidence) outranks the TREK collaborative avg, which a
+      // place nobody in TREK has rated can't have anyway.
+      rating: evidence?.rating ?? ratingRow?.r ?? null,
+      rating_count: evidence?.rating_count ?? null,
+      opening_weekdays: evidence?.opening_weekdays ?? null,
+      opening_periods: evidence?.opening_periods ?? null,
+      opening_special_days: evidence?.opening_special_days ?? null,
+      open_now: evidence?.open_now ?? null,
+      facts: evidence?.facts ?? null,
+      website: place.website ?? null,
+      phone: place.phone ?? null,
+      google_maps_url: evidence?.google_maps_url ?? null,
+      source: evidence?.source ?? 'quick-add',
+      retrieved_at: evidence?.retrieved_at ?? null,
       category: place.category_name ?? null,
       description: place.description ?? null,
       image_url: place.image_url ?? null,
     };
 
+    // Provider-id dedup: the same venue can arrive as a different Place row via
+    // a second search (or quick-add), and pinning it twice makes the resolver
+    // rank one café against itself. place_id dedup above is not enough.
+    const providerId = (snapshot.google_place_id ?? snapshot.osm_id ?? snapshot.amap_poi_id) as string | null;
+    if (providerId) {
+      const rows = this.db.all<{ snapshot_json: string | null }>(
+        'SELECT snapshot_json FROM decision_candidates WHERE decision_session_id = ?',
+        sessionId,
+      );
+      for (const r of rows) {
+        if (!r.snapshot_json) continue;
+        const s = JSON.parse(r.snapshot_json) as Record<string, unknown>;
+        if (s.google_place_id === providerId || s.osm_id === providerId || s.amap_poi_id === providerId) {
+          throw new ValidationError('Place is already a candidate');
+        }
+      }
+    }
+
     const res = this.db.run(
       `INSERT INTO decision_candidates (decision_session_id, place_id, source, added_by_type, added_by_id, snapshot_json)
-       VALUES (?, ?, 'manual', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)`,
       sessionId,
       placeId,
+      evidence ? 'search' : 'manual',
       addedBy.type,
       addedBy.id,
       JSON.stringify(snapshot),

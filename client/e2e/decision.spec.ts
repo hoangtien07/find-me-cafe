@@ -24,7 +24,10 @@ test('group decision: create → invite → join → resolve → select', async 
   const token = /\/d\/([A-Za-z0-9_-]+)/.exec(linkText ?? '')?.[1]
   expect(token).toBeTruthy()
 
-  // One candidate — quick-create a place straight on the room.
+  // One candidate — quick-create a place straight on the room. Place search
+  // (M2-02) needs a live maps provider, which a hermetic e2e can't rely on, so
+  // the test exercises the collapsed manual quick-add instead.
+  await page.getByRole('button', { name: 'Thêm thủ công (dev)' }).click()
   await page.getByPlaceholder('Tên quán mới').fill('Cà Phê E2E')
   await page.getByPlaceholder('lat').fill('10.7769')
   await page.getByPlaceholder('lng').fill('106.7009')

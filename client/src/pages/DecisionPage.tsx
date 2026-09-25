@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { PageSpinner } from '../components/shared/Spinner'
-import { Copy, MapPin, Navigation, Star, UserCheck, Users } from 'lucide-react'
+import { Copy, ExternalLink, MapPin, Navigation, Phone, Search, Star, UserCheck, Users, X } from 'lucide-react'
 import { useDecisionPage } from './decision/useDecisionPage'
+import type { VenuePick, VenueSuggestion } from '../repo/decisionPlaces'
 import type {
   DecisionCandidate,
   DecisionParticipant,
@@ -42,8 +43,19 @@ export default function DecisionPage() {
     inviteLink,
     resolving,
     addablePlaces,
+    searchQuery,
+    suggestions,
+    searching,
+    picked,
+    pickLoading,
+    addingPick,
+    pickedIsDuplicate,
     handleInvite,
     handleAddCandidate,
+    handleSearchChange,
+    handlePickSuggestion,
+    handleDismissPick,
+    handleAddPicked,
     handleCreatePlace,
     handleRemoveCandidate,
     handleResolve,
@@ -85,6 +97,17 @@ export default function DecisionPage() {
         <CandidateSection
           candidates={candidates}
           addablePlaces={addablePlaces}
+          searchQuery={searchQuery}
+          suggestions={suggestions}
+          searching={searching}
+          picked={picked}
+          pickLoading={pickLoading}
+          addingPick={addingPick}
+          pickedIsDuplicate={pickedIsDuplicate}
+          onSearchChange={handleSearchChange}
+          onPickSuggestion={handlePickSuggestion}
+          onDismissPick={handleDismissPick}
+          onAddPicked={handleAddPicked}
           onAdd={handleAddCandidate}
           onCreate={handleCreatePlace}
           onRemove={handleRemoveCandidate}
@@ -143,44 +166,83 @@ function Roster({ participants }: { participants: RosterEntry[] }) {
 function CandidateSection({
   candidates,
   addablePlaces,
+  searchQuery,
+  suggestions,
+  searching,
+  picked,
+  pickLoading,
+  addingPick,
+  pickedIsDuplicate,
+  onSearchChange,
+  onPickSuggestion,
+  onDismissPick,
+  onAddPicked,
   onAdd,
   onCreate,
   onRemove,
 }: {
   candidates: DecisionCandidate[]
   addablePlaces: { id: number | string; name: string }[]
+  searchQuery: string
+  suggestions: VenueSuggestion[]
+  searching: boolean
+  picked: VenuePick | null
+  pickLoading: boolean
+  addingPick: boolean
+  pickedIsDuplicate: boolean
+  onSearchChange: (q: string) => void
+  onPickSuggestion: (s: VenueSuggestion) => void
+  onDismissPick: () => void
+  onAddPicked: () => void
   onAdd: (placeId: number | string) => void
   onCreate: (name: string, lat: number | null, lng: number | null) => void
   onRemove: (candidateId: number | string) => void
 }) {
-  const [newName, setNewName] = useState('')
-  const [newLat, setNewLat] = useState('')
-  const [newLng, setNewLng] = useState('')
-
-  const submitNew = () => {
-    const name = newName.trim()
-    if (!name) return
-    onCreate(name, newLat.trim() === '' ? null : Number(newLat), newLng.trim() === '' ? null : Number(newLng))
-    setNewName('')
-    setNewLat('')
-    setNewLng('')
-  }
+  const [showManual, setShowManual] = useState(false)
 
   return (
     <section className="mb-6 rounded-xl border border-edge bg-surface-card p-4">
       <h2 className="mb-3 flex items-center gap-2 font-semibold">
         <MapPin size={16} className="text-accent" /> Quán đề cử ({candidates.length})
       </h2>
+
       <ul className="mb-3 space-y-1.5">
-        {candidates.map(c => (
-          <li key={c.id} className="flex items-center justify-between gap-2 rounded-lg bg-surface-hover px-3 py-2 text-sm">
-            <span>{c.snapshot?.name ?? `#${c.id}`}</span>
-            <button type="button" onClick={() => onRemove(c.id)} className="text-xs text-content-faint hover:text-red-500">
-              Gỡ
-            </button>
-          </li>
-        ))}
+        {candidates.map(c => <CandidateRow key={c.id} candidate={c} onRemove={onRemove} />)}
       </ul>
+
+      {/* TREK place search — the primary add path (M2-02). */}
+      <div className="relative mb-3">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-content-faint" />
+        <input
+          value={searchQuery}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder="Tìm quán cà phê, trà sữa…"
+          className="w-full rounded-lg border border-edge bg-surface pl-9 pr-3 py-2 text-sm"
+        />
+        {searching && <p className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-content-faint">…</p>}
+        {suggestions.length > 0 && !picked && (
+          <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-surface-card shadow-lg">
+            {suggestions.map((s, i) => (
+              <li key={`${s.placeId}-${i}`}>
+                <button
+                  type="button"
+                  onClick={() => onPickSuggestion(s)}
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-hover"
+                >
+                  <span className="block font-medium">{s.mainText}</span>
+                  <span className="block truncate text-xs text-content-faint">{s.secondaryText}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {pickLoading && <p className="mb-3 text-xs text-content-faint">Đang tải thông tin quán…</p>}
+      {picked && (
+        <PickPreview pick={picked} duplicate={pickedIsDuplicate} adding={addingPick} onAdd={onAddPicked} onDismiss={onDismissPick} />
+      )}
+
       {addablePlaces.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {addablePlaces.map(p => (
@@ -195,20 +257,151 @@ function CandidateSection({
           ))}
         </div>
       )}
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          placeholder="Tên quán mới"
-          className="min-w-40 flex-1 rounded-lg border border-edge bg-surface px-2.5 py-1.5 text-sm"
-        />
-        <input value={newLat} onChange={e => setNewLat(e.target.value)} placeholder="lat" className="w-24 rounded-lg border border-edge bg-surface px-2.5 py-1.5 text-sm" />
-        <input value={newLng} onChange={e => setNewLng(e.target.value)} placeholder="lng" className="w-24 rounded-lg border border-edge bg-surface px-2.5 py-1.5 text-sm" />
-        <button type="button" onClick={submitNew} className="rounded-lg bg-surface-hover px-3 py-1.5 text-sm font-medium">
-          Thêm
+
+      {/* Manual quick-add stays as a dev affordance, collapsed by default. */}
+      <button type="button" onClick={() => setShowManual(v => !v)} className="text-xs text-content-faint hover:text-content-secondary">
+        {showManual ? 'Ẩn thêm thủ công' : 'Thêm thủ công (dev)'}
+      </button>
+      {showManual && <ManualAdd onCreate={onCreate} />}
+    </section>
+  )
+}
+
+function CandidateRow({ candidate: c, onRemove }: { candidate: DecisionCandidate; onRemove: (id: number | string) => void }) {
+  const s = c.snapshot
+  const openLine = s?.opening_weekdays?.find(l => l.trim() !== '') ?? null
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-lg bg-surface-hover px-3 py-2">
+      <div className="flex min-w-0 items-center gap-3">
+        {s?.image_url ? (
+          <img src={s.image_url} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+        ) : (
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface">
+            <MapPin size={16} className="text-content-faint" />
+          </span>
+        )}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="truncate">{s?.name ?? `#${c.id}`}</span>
+            {s?.rating != null && (
+              <span className="inline-flex items-center gap-0.5 text-xs text-amber-500">
+                <Star size={11} fill="currentColor" /> {s.rating.toFixed(1)}{s.rating_count != null && ` (${s.rating_count})`}
+              </span>
+            )}
+          </div>
+          <div className="truncate text-xs text-content-faint">
+            {[s?.address, s?.open_now === true ? 'Đang mở' : s?.open_now === false ? 'Đang đóng' : null, openLine].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {s?.website && (
+          <a href={s.website} target="_blank" rel="noreferrer" className="text-content-faint hover:text-accent" title="Website">
+            <ExternalLink size={14} />
+          </a>
+        )}
+        {s?.phone && (
+          <a href={`tel:${s.phone}`} className="text-content-faint hover:text-accent" title={s.phone}>
+            <Phone size={14} />
+          </a>
+        )}
+        <button type="button" onClick={() => onRemove(c.id)} className="text-xs text-content-faint hover:text-red-500">
+          Gỡ
         </button>
       </div>
-    </section>
+    </li>
+  )
+}
+
+function PickPreview({
+  pick,
+  duplicate,
+  adding,
+  onAdd,
+  onDismiss,
+}: {
+  pick: VenuePick
+  duplicate: boolean
+  adding: boolean
+  onAdd: () => void
+  onDismiss: () => void
+}) {
+  return (
+    <div className="mb-3 flex gap-3 rounded-lg border border-accent bg-surface p-3">
+      {pick.photo_url ? (
+        <img src={pick.photo_url} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" loading="lazy" />
+      ) : (
+        <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-surface-hover">
+          <MapPin size={20} className="text-content-faint" />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="font-medium">{pick.name}</div>
+            {pick.address && <div className="truncate text-xs text-content-faint">{pick.address}</div>}
+          </div>
+          <button type="button" onClick={onDismiss} className="text-content-faint hover:text-content" aria-label="Đóng">
+            <X size={15} />
+          </button>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-content-secondary">
+          {pick.rating != null && (
+            <span className="inline-flex items-center gap-0.5 text-amber-500">
+              <Star size={11} fill="currentColor" /> {pick.rating.toFixed(1)}{pick.rating_count != null && ` (${pick.rating_count})`}
+            </span>
+          )}
+          {pick.open_now === true && <span className="text-emerald-500">Đang mở</span>}
+          {pick.open_now === false && <span className="text-red-400">Đang đóng</span>}
+          {pick.website && (
+            <a href={pick.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-accent">
+              <ExternalLink size={11} /> Website
+            </a>
+          )}
+          {pick.facts?.cuisine && <span className="text-content-faint">{pick.facts.cuisine}</span>}
+          {pick.facts?.internet_access === 'yes' && <span className="text-content-faint">wifi</span>}
+        </div>
+        <button
+          type="button"
+          disabled={adding || duplicate}
+          onClick={onAdd}
+          className="mt-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-text disabled:opacity-50"
+        >
+          {duplicate ? 'Đã có trong danh sách' : adding ? 'Đang thêm…' : 'Thêm vào danh sách'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ManualAdd({ onCreate }: { onCreate: (name: string, lat: number | null, lng: number | null) => void }) {
+  const [newName, setNewName] = useState('')
+  const [newLat, setNewLat] = useState('')
+  const [newLng, setNewLng] = useState('')
+
+  const submitNew = () => {
+    const name = newName.trim()
+    if (!name) return
+    onCreate(name, newLat.trim() === '' ? null : Number(newLat), newLng.trim() === '' ? null : Number(newLng))
+    setNewName('')
+    setNewLat('')
+    setNewLng('')
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <input
+        value={newName}
+        onChange={e => setNewName(e.target.value)}
+        placeholder="Tên quán mới"
+        className="min-w-40 flex-1 rounded-lg border border-edge bg-surface px-2.5 py-1.5 text-sm"
+      />
+      <input value={newLat} onChange={e => setNewLat(e.target.value)} placeholder="lat" className="w-24 rounded-lg border border-edge bg-surface px-2.5 py-1.5 text-sm" />
+      <input value={newLng} onChange={e => setNewLng(e.target.value)} placeholder="lng" className="w-24 rounded-lg border border-edge bg-surface px-2.5 py-1.5 text-sm" />
+      <button type="button" onClick={submitNew} className="rounded-lg bg-surface-hover px-3 py-1.5 text-sm font-medium">
+        Thêm
+      </button>
+    </div>
   )
 }
 

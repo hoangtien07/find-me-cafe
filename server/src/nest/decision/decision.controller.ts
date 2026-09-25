@@ -138,7 +138,9 @@ export class DecisionController {
   ): { candidate: DecisionCandidate } {
     const sessionId = this.requireHostedSession(user, id);
     try {
-      return { candidate: this.decisions.addCandidate(sessionId, body.place_id, { type: 'host', id: user.id }) };
+      return {
+        candidate: this.decisions.addCandidate(sessionId, body.place_id, { type: 'host', id: user.id }, body.evidence),
+      };
     } catch (e: unknown) {
       this.throwMapped(e);
     }

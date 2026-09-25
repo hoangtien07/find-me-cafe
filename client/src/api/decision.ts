@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import type {
+  AddDecisionCandidateRequest,
   CreateDecisionRequest,
   CreateDecisionFeedbackRequest,
   CreateDecisionInviteRequest,
@@ -43,8 +44,8 @@ export const decisionApi = {
     apiClient.post<{ invite: DecisionInviteWithToken }>(`/decisions/${id}/invites`, data).then(r => r.data),
   listCandidates: (id: number | string) =>
     apiClient.get<{ candidates: DecisionCandidate[] }>(`/decisions/${id}/candidates`).then(r => r.data),
-  addCandidate: (id: number | string, placeId: number | string) =>
-    apiClient.post<{ candidate: DecisionCandidate }>(`/decisions/${id}/candidates`, { place_id: placeId }).then(r => r.data),
+  addCandidate: (id: number | string, data: AddDecisionCandidateRequest) =>
+    apiClient.post<{ candidate: DecisionCandidate }>(`/decisions/${id}/candidates`, data).then(r => r.data),
   removeCandidate: (id: number | string, candidateId: number | string) =>
     apiClient.delete<{ ok: true }>(`/decisions/${id}/candidates/${candidateId}`).then(r => r.data),
   resolve: (id: number | string) =>
