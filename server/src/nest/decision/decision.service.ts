@@ -394,13 +394,15 @@ export class DecisionService {
   }
 
   /**
-   * The host's roster: id, display name and whether they finished the intake.
-   * Deliberately excludes context (origins/budgets) — the room page shows a
-   * checkmark list, not everybody's details.
+   * The host's roster: identity, intake status, origins and ride mode.
+   * Origins ride along so the host's comparison map (M2-09) can draw the
+   * group's geometry — the host room is the audience that needs it (the
+   * participant WS payloads already carry the same fields). Budgets and
+   * preferences still stay off.
    */
   listRoster(sessionId: number): DecisionParticipantRosterEntry[] {
     return this.db.all<DecisionParticipantRosterEntry>(
-      'SELECT id, display_name, submitted_at FROM decision_participants WHERE decision_session_id = ? ORDER BY created_at',
+      'SELECT id, display_name, submitted_at, origin_lat, origin_lng, origin_label, travel_mode FROM decision_participants WHERE decision_session_id = ? ORDER BY created_at',
       sessionId,
     );
   }

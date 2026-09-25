@@ -310,12 +310,20 @@ export type DecisionParticipantContext = z.infer<typeof decisionParticipantConte
 
 /**
  * A roster entry — who else is in the room, projected down to what a stranger
- * may see. Origin coordinates, budgets and preferences stay off the wire.
+ * may see. The origin/travel-mode fields are optional on purpose: the
+ * participant view's roster leaves them off entirely, while the host GET and
+ * the participant WS payloads carry them so the comparison map (M2-09) can
+ * draw the group's geometry. They stay off budgets/preferences either way.
  */
 export const decisionParticipantRosterEntrySchema = z.object({
   id: idSchema,
   display_name: z.string(),
   submitted_at: z.string().nullable(),
+  origin_lat: z.number().nullable().optional(),
+  origin_lng: z.number().nullable().optional(),
+  origin_label: z.string().nullable().optional(),
+  /** null = riding the session default; absent on the participant roster. */
+  travel_mode: decisionTravelModeSchema.nullable().optional(),
 });
 export type DecisionParticipantRosterEntry = z.infer<typeof decisionParticipantRosterEntrySchema>;
 
