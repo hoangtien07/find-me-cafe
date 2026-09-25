@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { notify } from './notify'
 import type {
   DecisionCandidate,
   DecisionParticipant,
@@ -54,6 +55,11 @@ interface DecisionState {
   /** M2-10 — the optional final vote's live tally (host room). */
   votes: DecisionVoteTally | null
   /**
+   * M2-12 — true when the open room was restored from the host's
+   * last-seen snapshot because the network fetch failed (offline alpha).
+   */
+  staleFromCache: boolean
+  /**
    * Bumped on every decision:* message handed to applyEvent — lets an
    * in-flight REST snapshot (decisionRepo.open) detect that live events
    * landed while it was fetching.
@@ -68,6 +74,7 @@ interface DecisionState {
   setLatestResult: (result: RecommendationResult | null) => void
   setSelection: (selection: DecisionSelection | null) => void
   setVotes: (votes: DecisionVoteTally | null) => void
+  setFromCache: (staleFromCache: boolean) => void
   /** The decision:* WS events the useDecisionRealtime listener hands over. */
   applyEvent: (msg: DecisionEventMessage) => void
 }
@@ -89,6 +96,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
   pendingResultRunId: null,
   selection: null,
   votes: null,
+  staleFromCache: false,
   eventSeq: 0,
 
   reset: () =>
@@ -101,6 +109,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
       pendingResultRunId: null,
       selection: null,
       votes: null,
+      staleFromCache: false,
     }),
 
   openSession: session =>
@@ -115,6 +124,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
             pendingResultRunId: null,
             selection: null,
             votes: null,
+            staleFromCache: false,
           }
         : { sessionId: session.id, session },
     ),
@@ -123,6 +133,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
   setLatestResult: latestResult => set({ latestResult }),
   setSelection: selection => set({ selection }),
   setVotes: votes => set({ votes }),
+  setFromCache: staleFromCache => set({ staleFromCache }),
 
   applyEvent: msg => {
     set(s => ({ eventSeq: s.eventSeq + 1 }))
@@ -153,12 +164,15 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
       case 'decision:status-updated': {
         if (!sameRoom(msg.decisionSessionId) || !msg.status || !session) return
         set({ session: { ...session, status: msg.status } })
+        // M2-12 — surface meaningful readiness states to the host.
+        if (msg.status === 'ready') notify('Cả nhóm đã nhập xong — sẵn sàng chấm điểm', 'success')
         return
       }
       case 'decision:recommendation-ready': {
         // Content-free ping: the listening page refetches recommendations/latest.
         if (!sameRoom(msg.decisionSessionId)) return
         set({ pendingResultRunId: msg.runId ?? null })
+        notify('Nhóm đã có gợi ý — xem Top quán', 'success')
         return
       }
       case 'decision:selected': {
@@ -167,6 +181,7 @@ export const useDecisionStore = create<DecisionState>()((set, get) => ({
           selection: msg.selection ?? null,
           session: s.session ? { ...s.session, status: 'selected' } : s.session,
         }))
+        notify('Đã chốt quán!', 'success')
         return
       }
       case 'decision:votes-updated': {

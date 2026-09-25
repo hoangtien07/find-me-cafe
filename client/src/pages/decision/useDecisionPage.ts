@@ -27,6 +27,7 @@ export function useDecisionPage() {
   const pendingResultRunId = useDecisionStore(s => s.pendingResultRunId)
   const selection = useDecisionStore(s => s.selection)
   const votes = useDecisionStore(s => s.votes)
+  const staleFromCache = useDecisionStore(s => s.staleFromCache)
   const reset = useDecisionStore(s => s.reset)
 
   const [isLoading, setIsLoading] = useState(true)
@@ -78,7 +79,11 @@ export function useDecisionPage() {
         // like a trip page would, or no broadcast ever reaches the store.
         joinedTripId = decision.trip_id
         joinTrip(decision.trip_id)
-        setTripPlaces((await placeRepo.list(decision.trip_id)).places)
+        // Trip places only feed the "pin an existing place" fallback list —
+        // offline they stay empty while the cached room still renders.
+        try {
+          setTripPlaces((await placeRepo.list(decision.trip_id)).places)
+        } catch { /* offline — candidate list is already populated from cache */ }
       })
       .catch(() => {
         if (!cancelled) navigate('/dashboard')
@@ -310,6 +315,7 @@ export function useDecisionPage() {
     latestResult,
     selection,
     votes,
+    staleFromCache,
     isLoading,
     error,
     inviteLink,
