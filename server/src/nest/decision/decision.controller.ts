@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '../../types';
@@ -16,6 +17,7 @@ import type {
   DecisionGetResponse,
   DecisionSession,
   DecisionSessionMetrics,
+  DecisionVenueContext,
   RecommendationResult,
 } from '@trek/shared';
 import { idParamSchema } from '@trek/shared';
@@ -33,6 +35,7 @@ import {
   DecisionSelectDto,
   DecisionFeedbackDto,
   DecisionTelemetryDto,
+  DecisionVenueContextDto,
 } from './decision.dto';
 import type { DecisionInviteWithToken } from '@trek/shared';
 
@@ -170,6 +173,29 @@ export class DecisionController {
       this.throwMapped(e);
     }
     return { ok: true };
+  }
+
+  /**
+   * PUT /api/decisions/:id/candidates/:candidateId/context — the host's
+   * VenueContext overlay (M2-08): the typed vibe/noise/group-fit dims the
+   * resolver matches deterministically on the next run.
+   */
+  @Put(':id/candidates/:candidateId/context')
+  @HttpCode(200)
+  upsertVenueContext(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Param('candidateId') candidateId: string,
+    @Body() body: DecisionVenueContextDto,
+  ): { venue_context: DecisionVenueContext } {
+    const sessionId = this.requireHostedSession(user, id);
+    const cid = idParamSchema.safeParse(candidateId);
+    if (!cid.success) throw new HttpException({ error: 'Invalid candidate id' }, 400);
+    try {
+      return { venue_context: this.decisions.upsertVenueContext(sessionId, cid.data, body) };
+    } catch (e: unknown) {
+      this.throwMapped(e);
+    }
   }
 
   /**

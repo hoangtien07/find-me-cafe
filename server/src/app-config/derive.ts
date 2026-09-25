@@ -334,9 +334,21 @@ export function deriveNet(raw: RawEnv) {
   };
 }
 
+export function deriveDecision(raw: RawEnv) {
+  return {
+    /** Raw DECISION_MATRIX_PROVIDER — 'mock' | 'google' | 'osrm'; the select validates/fails closed at the call site. */
+    matrixProvider: raw.DECISION_MATRIX_PROVIDER,
+    matrixTimeoutMs: raw.DECISION_MATRIX_TIMEOUT_MS,
+    googleRoutesApiKey: raw.GOOGLE_ROUTES_API_KEY,
+    googleRoutesApiBase: raw.GOOGLE_ROUTES_API_BASE,
+    osrmMatrixApiBase: raw.OSRM_MATRIX_API_BASE,
+  };
+}
+
 export function deriveAll(raw: RawEnv) {
   return {
     app: deriveApp(raw),
+    decision: deriveDecision(raw),
     http: deriveHttp(raw),
     session: deriveSession(raw),
     managed: deriveManaged(raw),

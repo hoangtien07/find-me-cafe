@@ -10,6 +10,7 @@ import type {
   DecisionParticipant,
   DecisionParticipantRosterEntry,
   RecommendationResult,
+  UpsertVenueContextRequest,
 } from '@trek/shared'
 
 type RosterEntry = DecisionParticipant | DecisionParticipantRosterEntry
@@ -64,6 +65,7 @@ export default function DecisionPage() {
     handleSelect,
     handleFeedback,
     handleTrackEvent,
+    handleVenueContext,
   } = useDecisionPage()
 
   if (isLoading || !session) {
@@ -114,6 +116,7 @@ export default function DecisionPage() {
           onAdd={handleAddCandidate}
           onCreate={handleCreatePlace}
           onRemove={handleRemoveCandidate}
+          onSaveContext={handleVenueContext}
         />
 
         {error && <p className="my-3 text-sm text-red-500">{error}</p>}
@@ -193,6 +196,7 @@ function CandidateSection({
   onAdd,
   onCreate,
   onRemove,
+  onSaveContext,
 }: {
   candidates: DecisionCandidate[]
   addablePlaces: { id: number | string; name: string }[]
@@ -210,6 +214,7 @@ function CandidateSection({
   onAdd: (placeId: number | string) => void
   onCreate: (name: string, lat: number | null, lng: number | null) => void
   onRemove: (candidateId: number | string) => void
+  onSaveContext: (candidateId: number | string, body: UpsertVenueContextRequest) => Promise<boolean>
 }) {
   const [showManual, setShowManual] = useState(false)
 
@@ -220,7 +225,9 @@ function CandidateSection({
       </h2>
 
       <ul className="mb-3 space-y-1.5">
-        {candidates.map(c => <CandidateRow key={c.id} candidate={c} onRemove={onRemove} />)}
+        {candidates.map(c => (
+          <CandidateRow key={c.id} candidate={c} onRemove={onRemove} onSaveContext={onSaveContext} />
+        ))}
       </ul>
 
       {/* TREK place search — the primary add path (M2-02). */}
@@ -280,12 +287,22 @@ function CandidateSection({
   )
 }
 
-function CandidateRow({ candidate: c, onRemove }: { candidate: DecisionCandidate; onRemove: (id: number | string) => void }) {
+function CandidateRow({
+  candidate: c,
+  onRemove,
+  onSaveContext,
+}: {
+  candidate: DecisionCandidate
+  onRemove: (id: number | string) => void
+  onSaveContext: (candidateId: number | string, body: UpsertVenueContextRequest) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState(false)
   const s = c.snapshot
   const openLine = s?.opening_weekdays?.find(l => l.trim() !== '') ?? null
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg bg-surface-hover px-3 py-2">
-      <div className="flex min-w-0 items-center gap-3">
+    <li className="rounded-lg bg-surface-hover px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
         {s?.image_url ? (
           <img src={s.image_url} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
         ) : (
@@ -321,8 +338,158 @@ function CandidateRow({ candidate: c, onRemove }: { candidate: DecisionCandidate
         <button type="button" onClick={() => onRemove(c.id)} className="text-xs text-content-faint hover:text-red-500">
           Gỡ
         </button>
+        <button
+          type="button"
+          onClick={() => setEditing(v => !v)}
+          aria-label="Chi tiết quán"
+          aria-expanded={editing}
+          className="text-xs text-content-faint hover:text-accent"
+        >
+          Chi tiết
+        </button>
       </div>
+      </div>
+      {editing && (
+        <VenueContextEditor
+          candidate={c}
+          onSave={async body => {
+            const ok = await onSaveContext(c.id, body)
+            if (ok) setEditing(false)
+          }}
+        />
+      )}
     </li>
+  )
+}
+
+const NOISE_OPTS: { v: string; label: string }[] = [
+  { v: '', label: '—' },
+  { v: 'QUIET', label: 'Yên tĩnh' },
+  { v: 'MODERATE', label: 'Vừa vặn' },
+  { v: 'LIVELY', label: 'Sôi động' },
+]
+const PRICE_OPTS = [
+  { v: '', label: '—' },
+  { v: 'LOW', label: 'Giá rẻ' },
+  { v: 'MEDIUM', label: 'Tầm trung' },
+  { v: 'HIGH', label: 'Cao cấp' },
+]
+const PARKING_OPTS = [
+  { v: '', label: '—' },
+  { v: 'NONE', label: 'Không chỗ đỗ' },
+  { v: 'LIMITED', label: 'Đỗ xe hạn chế' },
+  { v: 'EASY', label: 'Đỗ xe dễ' },
+]
+const FIT_OPTS = [
+  { v: '', label: '—' },
+  { v: '1', label: '1' },
+  { v: '2', label: '2' },
+  { v: '3', label: '3' },
+  { v: '4', label: '4' },
+  { v: '5', label: '5' },
+]
+
+/**
+ * The host's manual VenueContext edit surface (M2-08). Untouched dims stay
+ * UNKNOWN/null on save — "we didn't check" is honest data, not a guess.
+ */
+function VenueContextEditor({
+  candidate: c,
+  onSave,
+}: {
+  candidate: DecisionCandidate
+  onSave: (body: UpsertVenueContextRequest) => Promise<void>
+}) {
+  const ctx = c.venue_context
+  const [noise, setNoise] = useState(ctx?.noise_level === 'UNKNOWN' ? '' : ctx?.noise_level ?? '')
+  const [price, setPrice] = useState(ctx?.price_band === 'UNKNOWN' ? '' : ctx?.price_band ?? '')
+  const [parking, setParking] = useState(ctx?.parking === 'UNKNOWN' ? '' : ctx?.parking ?? '')
+  const [groupFit, setGroupFit] = useState(ctx?.group_friendliness != null ? String(ctx.group_friendliness) : '')
+  const [laptopFit, setLaptopFit] = useState(ctx?.laptop_friendliness != null ? String(ctx.laptop_friendliness) : '')
+  const [photoFit, setPhotoFit] = useState(ctx?.photo_friendliness != null ? String(ctx.photo_friendliness) : '')
+  const [vibeTags, setVibeTags] = useState((ctx?.vibe_tags ?? []).join(', '))
+  const [drinkTags, setDrinkTags] = useState((ctx?.drink_tags ?? []).join(', '))
+  const [occasionTags, setOccasionTags] = useState((ctx?.occasion_tags ?? []).join(', '))
+  const [saving, setSaving] = useState(false)
+
+  const selectCls = 'rounded border border-edge bg-surface px-1.5 py-1 text-xs'
+  const tagInput = (label: string, value: string, set: (v: string) => void, ph: string) => (
+    <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+      <span className="w-20 shrink-0">{label}</span>
+      <input value={value} onChange={e => set(e.target.value)} placeholder={ph} className="w-full rounded border border-edge bg-surface px-1.5 py-1 text-xs" />
+    </label>
+  )
+  const tagsOf = (raw: string) => raw.split(',').map(t => t.trim()).filter(Boolean).slice(0, 8)
+
+  return (
+    <div className="mt-2 grid gap-2 border-t border-edge pt-2 sm:grid-cols-2">
+      <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+        <span className="w-20 shrink-0">Tiếng ồn</span>
+        <select value={noise} onChange={e => setNoise(e.target.value)} className={selectCls}>
+          {NOISE_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+        <span className="w-20 shrink-0">Giá</span>
+        <select value={price} onChange={e => setPrice(e.target.value)} className={selectCls}>
+          {PRICE_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+        <span className="w-20 shrink-0">Đỗ xe</span>
+        <select value={parking} onChange={e => setParking(e.target.value)} className={selectCls}>
+          {PARKING_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+        <span className="w-20 shrink-0">Hợp nhóm</span>
+        <select value={groupFit} onChange={e => setGroupFit(e.target.value)} className={selectCls}>
+          {FIT_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+        <span className="w-20 shrink-0">Làm việc</span>
+        <select value={laptopFit} onChange={e => setLaptopFit(e.target.value)} className={selectCls}>
+          {FIT_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-content-secondary">
+        <span className="w-20 shrink-0">Sống ảo</span>
+        <select value={photoFit} onChange={e => setPhotoFit(e.target.value)} className={selectCls}>
+          {FIT_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </label>
+      <div className="grid gap-1.5 sm:col-span-2">
+        {tagInput('Vibe tags', vibeTags, setVibeTags, 'yên tĩnh, vintage…')}
+        {tagInput('Đồ uống', drinkTags, setDrinkTags, 'coffee, trà, matcha…')}
+        {tagInput('Dịp', occasionTags, setOccasionTags, 'hẹn hò, họp nhóm…')}
+      </div>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={async () => {
+          setSaving(true)
+          try {
+            await onSave({
+              noise_level: noise === '' ? 'UNKNOWN' : (noise as 'QUIET' | 'MODERATE' | 'LIVELY'),
+              price_band: price === '' ? 'UNKNOWN' : (price as 'LOW' | 'MEDIUM' | 'HIGH'),
+              parking: parking === '' ? 'UNKNOWN' : (parking as 'NONE' | 'LIMITED' | 'EASY'),
+              group_friendliness: groupFit === '' ? null : Number(groupFit),
+              laptop_friendliness: laptopFit === '' ? null : Number(laptopFit),
+              photo_friendliness: photoFit === '' ? null : Number(photoFit),
+              vibe_tags: tagsOf(vibeTags),
+              drink_tags: tagsOf(drinkTags),
+              occasion_tags: tagsOf(occasionTags),
+            })
+          } finally {
+            setSaving(false)
+          }
+        }}
+        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-text disabled:opacity-50 sm:col-span-2 sm:justify-self-start"
+      >
+        {saving ? 'Đang lưu…' : 'Lưu chi tiết'}
+      </button>
+    </div>
   )
 }
 

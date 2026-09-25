@@ -15,8 +15,10 @@ import type {
   DecisionSession,
   DecisionStatus,
   DecisionTravelMode,
+  DecisionVenueContext,
   UpdateDecisionRequest,
   UpdateParticipantContextRequest,
+  UpsertVenueContextRequest,
 } from '@trek/shared';
 import { DECISION_TRAVEL_MODES } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
@@ -476,22 +478,120 @@ export class DecisionService {
   // ── Candidates ────────────────────────────────────────────────────────────
 
   /** A candidate row with its snapshot parsed for the wire. */
-  private toCandidate(row: Record<string, unknown>): DecisionCandidate {
+  private toCandidate(row: Record<string, unknown>, venueContext: DecisionVenueContext | null = null): DecisionCandidate {
     return {
       ...row,
       snapshot: typeof row.snapshot_json === 'string' ? JSON.parse(row.snapshot_json) : null,
       snapshot_json: undefined,
+      venue_context: venueContext,
     } as unknown as DecisionCandidate;
   }
 
-  /** Candidates of a session, oldest first. */
+  /** M2-08 — the semantic overlay rows for a session, keyed by candidate. */
+  venueContexts(sessionId: number): Map<number, DecisionVenueContext> {
+    const rows = this.db.all<Record<string, unknown>>(
+      'SELECT * FROM decision_venue_contexts WHERE decision_session_id = ?',
+      sessionId,
+    );
+    return new Map(rows.map((r) => [Number(r.candidate_id), this.toVenueContext(r)]));
+  }
+
+  private toVenueContext(row: Record<string, unknown>): DecisionVenueContext {
+    const parseTags = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : []);
+    return {
+      ...row,
+      vibe_tags: parseTags(row.vibe_tags),
+      drink_tags: parseTags(row.drink_tags),
+      occasion_tags: parseTags(row.occasion_tags),
+    } as unknown as DecisionVenueContext;
+  }
+
+  /**
+   * The host's manual VenueContext edit surface (M2-08). Upserts the single
+   * overlay row per candidate — re-PUT replaces the dims the host touched and
+   * defaults the rest; the next resolve reads it deterministically.
+   */
+  upsertVenueContext(
+    sessionId: number,
+    candidateId: number,
+    body: UpsertVenueContextRequest,
+  ): DecisionVenueContext {
+    const candidate = this.db.get<{ id: number }>(
+      'SELECT id FROM decision_candidates WHERE id = ? AND decision_session_id = ?',
+      candidateId,
+      sessionId,
+    );
+    if (!candidate) throw new NotFoundError('Candidate not found in this decision');
+    const existing = this.db.get<Record<string, unknown>>(
+      'SELECT * FROM decision_venue_contexts WHERE decision_session_id = ? AND candidate_id = ?',
+      sessionId,
+      candidateId,
+    );
+    if (existing) {
+      const fields: string[] = [];
+      const params: unknown[] = [];
+      for (const key of [
+        'price_band',
+        'noise_level',
+        'group_friendliness',
+        'laptop_friendliness',
+        'photo_friendliness',
+        'parking',
+        'vibe_tags',
+        'drink_tags',
+        'occasion_tags',
+        'source',
+        'confidence',
+      ] as const) {
+        if (body[key] !== undefined) {
+          fields.push(`${key} = ?`);
+          params.push(key.endsWith('_tags') ? JSON.stringify(body[key]) : body[key]);
+        }
+      }
+      if (fields.length > 0) {
+        this.db.run(
+          `UPDATE decision_venue_contexts SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          ...params,
+          existing.id as number,
+        );
+      }
+      return this.toVenueContext(
+        this.db.get<Record<string, unknown>>('SELECT * FROM decision_venue_contexts WHERE id = ?', existing.id as number)!,
+      );
+    }
+    const res = this.db.run(
+      `INSERT INTO decision_venue_contexts
+         (decision_session_id, candidate_id, price_band, noise_level, group_friendliness, laptop_friendliness,
+          photo_friendliness, parking, vibe_tags, drink_tags, occasion_tags, source, confidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sessionId,
+      candidateId,
+      body.price_band ?? 'UNKNOWN',
+      body.noise_level ?? 'UNKNOWN',
+      body.group_friendliness ?? null,
+      body.laptop_friendliness ?? null,
+      body.photo_friendliness ?? null,
+      body.parking ?? 'UNKNOWN',
+      JSON.stringify(body.vibe_tags ?? []),
+      JSON.stringify(body.drink_tags ?? []),
+      JSON.stringify(body.occasion_tags ?? []),
+      body.source ?? 'manual_curator',
+      body.confidence ?? null,
+    );
+    return this.toVenueContext(
+      this.db.get<Record<string, unknown>>('SELECT * FROM decision_venue_contexts WHERE id = ?', Number(res.lastInsertRowid))!,
+    );
+  }
+
+  /** Candidates of a session, oldest first — each carrying its VenueContext overlay. */
   listCandidates(sessionId: number): DecisionCandidate[] {
+    const contexts = this.venueContexts(sessionId);
     return this.db
       .all<Record<string, unknown>>(
         'SELECT * FROM decision_candidates WHERE decision_session_id = ? ORDER BY created_at',
         sessionId,
       )
-      .map((r) => this.toCandidate(r));
+      .map((r) => this.toCandidate(r, contexts.get(Number(r.id)) ?? null));
   }
 
   /**

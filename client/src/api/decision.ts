@@ -13,11 +13,13 @@ import type {
   DecisionSelection,
   DecisionSessionMetrics,
   DecisionSession,
+  DecisionVenueContext,
   JoinDecisionRequest,
   RecommendationResult,
   TrackDecisionEventRequest,
   UpdateDecisionRequest,
   UpdateParticipantContextRequest,
+  UpsertVenueContextRequest,
 } from '@trek/shared'
 
 /**
@@ -61,6 +63,10 @@ export const decisionApi = {
     apiClient.post<{ ok: boolean }>(`/decisions/${id}/telemetry`, data).then(r => r.data),
   metrics: (id: number | string) =>
     apiClient.get<DecisionSessionMetrics>(`/decisions/${id}/metrics`).then(r => r.data),
+  upsertVenueContext: (id: number | string, candidateId: number | string, data: UpsertVenueContextRequest) =>
+    apiClient
+      .put<{ venue_context: DecisionVenueContext }>(`/decisions/${id}/candidates/${candidateId}/context`, data)
+      .then(r => r.data),
 }
 
 export const decisionParticipantApi = {

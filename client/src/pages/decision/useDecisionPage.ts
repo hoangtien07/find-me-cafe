@@ -7,7 +7,7 @@ import { placeRepo } from '../../repo/placeRepo'
 import { decisionPlacesRepo, type VenuePick, type VenueSuggestion } from '../../repo/decisionPlaces'
 import { useDecisionStore } from '../../store/decisionStore'
 import { useDecisionRealtime } from '../../hooks/useDecisionRealtime'
-import type { DecisionCandidate, TrackDecisionEventRequest } from '@trek/shared'
+import type { DecisionCandidate, TrackDecisionEventRequest, UpsertVenueContextRequest } from '@trek/shared'
 import type { Place } from '../../types'
 
 /**
@@ -258,6 +258,30 @@ export function useDecisionPage() {
     [sessionId],
   )
 
+  // M2-08 — the host's VenueContext overlay save: persist, then fold the
+  // returned row into the candidate so the card shows the new dims without a
+  // full room refetch.
+  const handleVenueContext = useCallback(
+    async (candidateId: number | string, body: UpsertVenueContextRequest) => {
+      try {
+        const { venue_context } = await decisionApi.upsertVenueContext(sessionId, candidateId, body)
+        useDecisionStore
+          .getState()
+          .setCandidates(
+            useDecisionStore
+              .getState()
+              .candidates.map(c => (String(c.id) === String(candidateId) ? { ...c, venue_context } : c)),
+          )
+        setError(null)
+        return true
+      } catch {
+        setError('Không lưu được chi tiết quán.')
+        return false
+      }
+    },
+    [sessionId],
+  )
+
   // Trip places not yet pinned are the addable picker.
   const candidatePlaceIds = new Set(candidates.map((c: DecisionCandidate) => Number(c.place_id)))
   const addablePlaces = tripPlaces.filter(p => !candidatePlaceIds.has(Number(p.id)))
@@ -308,5 +332,6 @@ export function useDecisionPage() {
     handleSelect,
     handleFeedback,
     handleTrackEvent,
+    handleVenueContext,
   }
 }
