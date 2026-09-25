@@ -11,6 +11,7 @@ import type {
   DecisionParticipant,
   DecisionParticipantSessionResponse,
   DecisionSelection,
+  DecisionSessionMetrics,
   DecisionSession,
   JoinDecisionRequest,
   RecommendationResult,
@@ -56,6 +57,10 @@ export const decisionApi = {
     apiClient.post<{ selection: DecisionSelection }>(`/decisions/${id}/select`, { candidate_id: candidateId }).then(r => r.data),
   feedback: (id: number | string, data: CreateDecisionFeedbackRequest) =>
     apiClient.post<{ feedback: unknown }>(`/decisions/${id}/feedback`, data).then(r => r.data),
+  track: (id: number | string, data: TrackDecisionEventRequest) =>
+    apiClient.post<{ ok: boolean }>(`/decisions/${id}/telemetry`, data).then(r => r.data),
+  metrics: (id: number | string) =>
+    apiClient.get<DecisionSessionMetrics>(`/decisions/${id}/metrics`).then(r => r.data),
 }
 
 export const decisionParticipantApi = {

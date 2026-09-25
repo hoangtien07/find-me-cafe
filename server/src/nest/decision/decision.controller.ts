@@ -11,7 +11,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '../../types';
-import type { DecisionCandidate, DecisionGetResponse, DecisionSession, RecommendationResult } from '@trek/shared';
+import type {
+  DecisionCandidate,
+  DecisionGetResponse,
+  DecisionSession,
+  DecisionSessionMetrics,
+  RecommendationResult,
+} from '@trek/shared';
 import { idParamSchema } from '@trek/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -26,6 +32,7 @@ import {
   DecisionCandidateAddDto,
   DecisionSelectDto,
   DecisionFeedbackDto,
+  DecisionTelemetryDto,
 } from './decision.dto';
 import type { DecisionInviteWithToken } from '@trek/shared';
 
@@ -189,6 +196,27 @@ export class DecisionController {
     if (!result) throw new HttpException({ error: 'No completed run' }, 404);
     this.telemetry.track(sessionId, 'recommendation_viewed', { userId: user.id });
     return result;
+  }
+
+  /**
+   * POST /api/decisions/:id/telemetry — the host self-reporting a client-side
+   * funnel step (e.g. opening directions from the recommendation list). Same
+   * whitelist as the participant endpoint: devices never mint server-side
+   * funnel events.
+   */
+  @Post(':id/telemetry')
+  @HttpCode(200)
+  track(@CurrentUser() user: User, @Param('id') id: string, @Body() body: DecisionTelemetryDto): { ok: boolean } {
+    const sessionId = this.requireHostedSession(user, id);
+    this.telemetry.track(sessionId, body.event, { userId: user.id });
+    return { ok: true };
+  }
+
+  /** GET /api/decisions/:id/metrics — the basic funnel read-out (M2-11). */
+  @Get(':id/metrics')
+  metrics(@CurrentUser() user: User, @Param('id') id: string): DecisionSessionMetrics {
+    const sessionId = this.requireHostedSession(user, id);
+    return this.telemetry.metrics(sessionId);
   }
 
   /**

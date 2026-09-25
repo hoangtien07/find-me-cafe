@@ -605,3 +605,25 @@ export const trackDecisionEventRequestSchema = z.object({
   event: z.enum(PARTICIPANT_TRACKABLE_EVENTS),
 });
 export type TrackDecisionEventRequest = z.infer<typeof trackDecisionEventRequestSchema>;
+
+/**
+ * M2-11 — the funnel read-out: GET /api/decisions/:id/metrics (host only).
+ * `counts` is zero-filled for every event type so a client can render the
+ * funnel without sparse-map handling; the feedback block aggregates the
+ * learnable record's tail. Rates are null rather than 0 when there's nothing
+ * to average — "no feedback yet" must not read as "everyone hated it".
+ */
+export const decisionSessionMetricsSchema = z.object({
+  decision_session_id: idSchema,
+  counts: z.record(decisionEventTypeSchema, z.number().int().nonnegative()),
+  participants: z.number().int().nonnegative(),
+  contexts_submitted: z.number().int().nonnegative(),
+  candidates: z.number().int().nonnegative(),
+  feedback: z.object({
+    total: z.number().int().nonnegative(),
+    would_choose_again_rate: z.number().nullable(),
+    avg_fit: z.number().nullable(),
+  }),
+});
+export type DecisionSessionMetrics = z.infer<typeof decisionSessionMetricsSchema>;
+export const decisionSessionMetricsResponseSchema = decisionSessionMetricsSchema;
