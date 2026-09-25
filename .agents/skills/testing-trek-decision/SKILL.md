@@ -7,7 +7,7 @@ description: How to demo/test the TREK Decision ("chốt quán") group-venue-cho
 
 ## Setup
 - Run `npm run dev` at repo root — builds `shared/`, then watches server (:3001) + client (Vite :5173, proxies /api + /ws). Wait for "Nest application successfully started" AND the vite port before browsing.
-- Seeded dev user on this checkout: `smoke@test.dev` / `Sm0keTest!` (verified against bcrypt hash in `server/data/travel.db`). Admin exists as `admin` but `must_change_password=1` — avoid it for demos.
+- Dev login: a seeded `smoke@test.dev` exists in this checkout's local dev DB (`server/data/travel.db`, gitignored) — its password lives only in session secrets, never in the repo. If it is missing from your DB, register a fresh account through the signup form and use that instead; the host flow needs any account. Admin exists as `admin` but `must_change_password=1` — avoid it for demos.
 - SQLite dev DB: `server/data/travel.db` (better-sqlite3; readable while the server runs — queries serialize through WAL).
 
 ## Feature map (v4.3.1 + decision domain)
