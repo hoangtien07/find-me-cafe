@@ -5,8 +5,8 @@ import { DecisionParticipantController } from './decision-participant.controller
 import { DecisionParticipantGuard } from './decision-participant.guard';
 import { DecisionService } from './decision.service';
 import { TravelMatrixService } from './travel/travel-matrix.service';
-import { MockTravelMatrixProvider } from './travel/mock-travel-matrix.provider';
 import { TRAVEL_MATRIX_PROVIDER } from './travel/travel-matrix.provider';
+import { selectMatrixProvider } from './travel/matrix-provider-select';
 import { DecisionResolverService } from './resolver/resolver.service';
 import { DecisionTelemetryService } from './decision-telemetry.service';
 
@@ -23,7 +23,9 @@ import { DecisionTelemetryService } from './decision-telemetry.service';
     TravelMatrixService,
     DecisionResolverService,
     DecisionTelemetryService,
-    { provide: TRAVEL_MATRIX_PROVIDER, useClass: MockTravelMatrixProvider },
+    // mock (default/tests) | google | osrm — see selectMatrixProvider; a
+    // real selection without its config refuses to boot rather than degrade.
+    { provide: TRAVEL_MATRIX_PROVIDER, useFactory: () => selectMatrixProvider(process.env) },
   ],
   exports: [DecisionService, TravelMatrixService, DecisionResolverService],
 })
