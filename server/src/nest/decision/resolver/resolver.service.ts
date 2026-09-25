@@ -70,6 +70,7 @@ export class DecisionResolverService {
               id: p.participant.id,
               o: [p.participant.origin_lat, p.participant.origin_lng],
               m: p.participant.max_travel_minutes,
+              t: p.participant.travel_mode,
               b: [p.participant.budget_min, p.participant.budget_max],
               prefs: p.preferences,
               dbs: p.dealBreakers,

@@ -435,6 +435,10 @@ export class DecisionService {
         fields.push('budget_max = ?');
         values.push(ctx.budget_max);
       }
+      if (ctx.travel_mode !== undefined) {
+        fields.push('travel_mode = ?');
+        values.push(ctx.travel_mode);
+      }
       fields.push('submitted_at = CURRENT_TIMESTAMP', 'updated_at = CURRENT_TIMESTAMP');
       conn
         .prepare(`UPDATE decision_participants SET ${fields.join(', ')} WHERE id = ?`)

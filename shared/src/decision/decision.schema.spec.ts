@@ -70,6 +70,7 @@ describe('decision contract', () => {
         max_travel_minutes: null,
         budget_min: null,
         budget_max: null,
+        travel_mode: null,
         submitted_at: null,
         created_at: 'x',
         updated_at: 'x',
@@ -77,12 +78,32 @@ describe('decision contract', () => {
       expect(decisionParticipantSchema.safeParse(row).success).toBe(true);
     });
 
+    it('a participant may ride their own mode; a bogus mode is rejected', () => {
+      const row = {
+        id: 1,
+        decision_session_id: 2,
+        display_name: 'An',
+        origin_lat: null,
+        origin_lng: null,
+        origin_label: null,
+        max_travel_minutes: null,
+        budget_min: null,
+        budget_max: null,
+        travel_mode: 'cycling',
+        submitted_at: null,
+        created_at: 'x',
+        updated_at: 'x',
+      };
+      expect(decisionParticipantSchema.safeParse(row).success).toBe(true);
+      expect(decisionParticipantSchema.safeParse({ ...row, travel_mode: 'teleport' }).success).toBe(false);
+    });
+
     it('a constraint result keeps UNKNOWN distinct from PASS', () => {
       const pass = { eligible: true, violations: [], unknowns: [] };
-      const unknown = { eligible: false, violations: [], unknowns: [{ code: 'missing_origin' }] };
+      const unknown = { eligible: false, violations: [], unknowns: [{ type: 'missing_origin' }] };
       const violation = {
         eligible: false,
-        violations: [{ code: 'travel_over_hard_max', participant_id: 3 }],
+        violations: [{ type: 'travel_over_hard_max', participant_id: 3 }],
         unknowns: [],
       };
       expect(decisionConstraintResultSchema.safeParse(pass).success).toBe(true);
@@ -96,8 +117,8 @@ describe('decision contract', () => {
         strengths: ['tất cả trong giới hạn di chuyển'],
         tradeoffs: ['đồ uống ít nổi bật hơn lựa chọn #2'],
         travel_times: [
-          { participant_id: 1, display_name: 'An', duration_seconds: 960, status: 'ok' },
-          { participant_id: 2, display_name: 'Bình', duration_seconds: null, status: 'missing_origin' },
+          { participant_id: 1, display_name: 'An', duration_seconds: 960, status: 'ok', travel_mode: 'driving' },
+          { participant_id: 2, display_name: 'Bình', duration_seconds: null, status: 'missing_origin', travel_mode: null },
         ],
       };
       expect(decisionExplanationSchema.safeParse(exp).success).toBe(true);
@@ -171,6 +192,7 @@ describe('decision contract', () => {
           max_travel_minutes: null,
           budget_min: null,
           budget_max: null,
+          travel_mode: null,
           submitted_at: null,
           created_at: 'x',
           updated_at: 'x',
@@ -239,6 +261,8 @@ describe('decision contract', () => {
     });
 
     it('participant context: rejects inverted budgets and out-of-range coords', () => {
+      expect(updateParticipantContextRequestSchema.safeParse({ travel_mode: 'walking' }).success).toBe(true);
+      expect(updateParticipantContextRequestSchema.safeParse({ travel_mode: 'hoverboard' }).success).toBe(false);
       expect(updateParticipantContextRequestSchema.safeParse({ budget_min: 100, budget_max: 50 }).success).toBe(false);
       expect(updateParticipantContextRequestSchema.safeParse({ origin: { lat: 91, lng: 0 } }).success).toBe(false);
       expect(updateParticipantContextRequestSchema.safeParse({ origin: { lat: 10, lng: 181 } }).success).toBe(false);
@@ -315,6 +339,7 @@ describe('decision contract', () => {
           'candidate_added',
           'resolve_started',
           'resolve_completed',
+          'resolve_failed',
           'recommendation_viewed',
           'venue_selected',
           'navigation_opened',

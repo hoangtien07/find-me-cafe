@@ -2,7 +2,15 @@ import React, { useState } from 'react'
 import { MapPin, Navigation, Users } from 'lucide-react'
 import { PageSpinner } from '../components/shared/Spinner'
 import { useDecisionJoin } from './decisionJoin/useDecisionJoin'
-import type { UpdateParticipantContextRequest } from '@trek/shared'
+import type { DecisionTravelMode, UpdateParticipantContextRequest } from '@trek/shared'
+
+/** VN labels for the intake chips and the result's per-participant ride mode. */
+const MODE_LABELS: Record<DecisionTravelMode, string> = {
+  walking: 'Đi bộ',
+  cycling: 'Xe máy',
+  driving: 'Ô tô',
+  transit: 'Xe buýt',
+}
 
 /**
  * /d/:token — the anonymous participant flow (invite preview → join → intake
@@ -98,7 +106,10 @@ export default function DecisionJoinPage() {
                     {item.explanation?.headline && <div className="text-sm text-accent">{item.explanation.headline}</div>}
                     {snap?.address && <div className="mt-1 text-xs text-content-faint">{snap.address}</div>}
                     {mine?.status === 'ok' && (
-                      <div className="mt-1 text-xs text-content-secondary">Bạn đi khoảng {Math.round((mine.duration_seconds ?? 0) / 60)} phút</div>
+                      <div className="mt-1 text-xs text-content-secondary">
+                        Bạn đi khoảng {Math.round((mine.duration_seconds ?? 0) / 60)} phút
+                        {mine.travel_mode ? ` · ${MODE_LABELS[mine.travel_mode]}` : ''}
+                      </div>
                     )}
                     {snap?.lat != null && snap?.lng != null && (
                       <button
@@ -140,6 +151,7 @@ function ContextForm({
   const [pref2, setPref2] = useState('')
   const [pref3, setPref3] = useState('')
   const [vetoCategory, setVetoCategory] = useState('')
+  const [travelMode, setTravelMode] = useState<DecisionTravelMode | null>(null)
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return
@@ -170,6 +182,7 @@ function ContextForm({
       ...(vetoCategory.trim()
         ? { deal_breakers: [{ type: 'veto_category' as const, value: { category: vetoCategory.trim() } }] }
         : {}),
+      ...(travelMode ? { travel_mode: travelMode } : {}),
     }
     onSubmit(ctx)
   }
@@ -198,6 +211,22 @@ function ContextForm({
 
       <label className="mb-1 block text-xs font-medium text-content-secondary">Đi tối đa bao nhiêu phút? (không bắt buộc)</label>
       <input value={maxTravel} onChange={e => setMaxTravel(e.target.value)} inputMode="numeric" placeholder="30" className="mb-3 w-full rounded-lg border border-edge bg-surface px-3 py-2 text-sm" />
+
+      <label className="mb-1 block text-xs font-medium text-content-secondary">Bạn đi bằng gì? (mặc định theo nhóm)</label>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {(Object.entries(MODE_LABELS) as [DecisionTravelMode, string][]).map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setTravelMode(m => (m === mode ? null : mode))}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+              travelMode === mode ? 'border-accent bg-accent text-accent-text' : 'border-edge bg-surface text-content-secondary'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <label className="mb-1 block text-xs font-medium text-content-secondary">Ngân sách mỗi người (₫, không bắt buộc)</label>
       <div className="mb-3 flex gap-2">

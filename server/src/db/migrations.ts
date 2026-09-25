@@ -5418,6 +5418,17 @@ function runMigrations(db: Database.Database): void {
         db.exec('ALTER TABLE decision_participant_sessions ADD COLUMN revoked_at DATETIME');
       }
     },
+    // M2-04: each participant may ride their own mode; NULL = session default.
+    () => {
+      const hasTravelMode = db
+        .prepare(
+          "SELECT 1 FROM pragma_table_info('decision_participants') WHERE name = 'travel_mode'",
+        )
+        .get();
+      if (!hasTravelMode) {
+        db.exec('ALTER TABLE decision_participants ADD COLUMN travel_mode TEXT');
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {
