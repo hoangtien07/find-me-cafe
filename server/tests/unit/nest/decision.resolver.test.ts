@@ -244,6 +244,41 @@ describe('DecisionResolverService', () => {
     expect(types.indexOf('resolve_started')).toBeLessThan(types.indexOf('resolve_completed'));
   });
 
+  it('M2-08 — the VenueContext overlay moves GroupFit and names the matched dim in the explanation', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    // Same geometry for both candidates: only the overlay differentiates.
+    const quiet = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe Yên', 10.775, 106.7), { type: 'host', id: 1 });
+    const loud = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe Ồn', 10.775, 106.7), { type: 'host', id: 1 });
+    decisions.upsertVenueContext(s.id, quiet.id, { noise_level: 'QUIET' });
+    decisions.upsertVenueContext(s.id, loud.id, { noise_level: 'LIVELY' });
+
+    const { token } = decisions.createInvite(s.id, 1);
+    const { participant } = decisions.joinByInvite(token, 'An')!;
+    decisions.updateParticipantContext(participant.id, s.id, {
+      origin: { lat: 10.77, lng: 106.69 },
+      preferences: [{ key: 'noise', value: 'yên tĩnh' }],
+    });
+
+    const result = await resolver.resolve(s.id);
+    const itemOf = (id: number) => result.items.find(i => i.candidate_id === id)!;
+    // Quiet matched the typed dim; lively missed it — the quiet candidate ranks ahead.
+    expect(itemOf(quiet.id).rank).toBeLessThan(itemOf(loud.id).rank);
+    expect(itemOf(quiet.id).explanation?.strengths).toContain('khớp: yên tĩnh');
+    expect(itemOf(loud.id).explanation?.tradeoffs).toContain('không khớp: sôi động');
+    // And the overlay is visible on the wire candidate for the UI.
+    expect(itemOf(quiet.id).candidate.venue_context?.noise_level).toBe('QUIET');
+  });
+
+  it('M2-08 — editing the overlay changes the run input hash honestly', async () => {
+    const s = decisions.create(1, { title: 'X' });
+    const cand = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
+    joinWithOrigin(s.id, 'An', 10.77, 106.69);
+    const first = await resolver.resolve(s.id);
+    decisions.upsertVenueContext(s.id, cand.id, { noise_level: 'QUIET' });
+    const second = await resolver.resolve(s.id);
+    expect(second.run.input_hash).not.toBe(first.run.input_hash);
+  });
+
   it('feedback records the learnable row with a wire boolean', async () => {
     const s = decisions.create(1, { title: 'X' });
     const cand = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });

@@ -5429,6 +5429,33 @@ function runMigrations(db: Database.Database): void {
         db.exec('ALTER TABLE decision_participants ADD COLUMN travel_mode TEXT');
       }
     },
+    // M2-08 — the decision-specific semantic overlay (plan §17-18). Typed
+    // fields carry ranking-critical dimensions; tag lists carry flexible
+    // descriptors; source/confidence preserve provenance. One row per
+    // candidate, owned by the host via a manual edit surface — no scraping.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS decision_venue_contexts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decision_session_id INTEGER NOT NULL REFERENCES decision_sessions(id) ON DELETE CASCADE,
+          candidate_id INTEGER NOT NULL REFERENCES decision_candidates(id) ON DELETE CASCADE,
+          price_band TEXT NOT NULL DEFAULT 'UNKNOWN',
+          noise_level TEXT NOT NULL DEFAULT 'UNKNOWN',
+          group_friendliness INTEGER,
+          laptop_friendliness INTEGER,
+          photo_friendliness INTEGER,
+          parking TEXT NOT NULL DEFAULT 'UNKNOWN',
+          vibe_tags TEXT NOT NULL DEFAULT '[]',
+          drink_tags TEXT NOT NULL DEFAULT '[]',
+          occasion_tags TEXT NOT NULL DEFAULT '[]',
+          source TEXT NOT NULL DEFAULT 'manual_curator',
+          confidence REAL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (decision_session_id, candidate_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_venue_contexts_session ON decision_venue_contexts(decision_session_id);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

@@ -75,7 +75,7 @@ export class DecisionResolverService {
               prefs: p.preferences,
               dbs: p.dealBreakers,
             })),
-            candidates: candidates.map((c) => [c.id, c.snapshot]),
+            candidates: candidates.map((c) => [c.id, c.snapshot, c.venue_context]),
             estimates: estimates.map((e) => [e.participant_id, e.candidate_id, e.travel_mode, e.duration_seconds, e.status]),
           }),
         )
@@ -190,6 +190,7 @@ export class DecisionResolverService {
       sessionId,
     );
     if (!run) return undefined;
+    const contexts = this.decisions.venueContexts(sessionId);
     const items = this.db
       .all<Record<string, unknown>>(
         `SELECT rs.*, dc.snapshot_json AS _snap, dc.place_id AS _place, dc.source AS _source,
@@ -222,6 +223,7 @@ export class DecisionResolverService {
           added_by_type: r._abt,
           added_by_id: r._abi,
           snapshot: typeof r._snap === 'string' ? JSON.parse(r._snap) : null,
+          venue_context: contexts.get(r.candidate_id as number) ?? null,
           created_at: r._ccreated,
         },
       })) as RecommendationResult['items'];

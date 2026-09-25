@@ -399,4 +399,51 @@ describe('DecisionService', () => {
       expect(m.counts.participant_joined).toBe(0);
     });
   });
+
+  describe('venue context (M2-08)', () => {
+    const addPlace = (tripId: number) =>
+      Number(
+        testDb
+          .prepare("INSERT INTO places (trip_id, name, lat, lng) VALUES (?, 'Cà phê', 10.77, 106.7)")
+          .run(tripId).lastInsertRowid,
+      );
+
+    it('upserts a context row: untouched dims stay UNKNOWN/null, touched ones persist', () => {
+      const s = svc.create(1, { title: 'X' });
+      const c = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+
+      const ctx = svc.upsertVenueContext(s.id, c.id, { noise_level: 'QUIET', vibe_tags: ['yên tĩnh'] });
+      expect(ctx.candidate_id).toBe(c.id);
+      expect(ctx.noise_level).toBe('QUIET');
+      expect(ctx.price_band).toBe('UNKNOWN');
+      expect(ctx.group_friendliness).toBeNull();
+      expect(ctx.vibe_tags).toEqual(['yên tĩnh']);
+      expect(ctx.source).toBe('manual_curator');
+
+      const updated = svc.upsertVenueContext(s.id, c.id, { parking: 'EASY' });
+      expect(updated.id).toBe(ctx.id); // same row, not a second insert
+      expect(updated.noise_level).toBe('QUIET'); // untouched dim preserved
+      expect(updated.parking).toBe('EASY');
+      expect(updated.updated_at > ctx.updated_at || updated.updated_at === ctx.updated_at).toBe(true);
+      expect(svc.venueContexts(s.id).size).toBe(1);
+    });
+
+    it('listCandidates attaches the venue_context overlay', () => {
+      const s = svc.create(1, { title: 'X' });
+      const c1 = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+      const c2 = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
+      svc.upsertVenueContext(s.id, c1.id, { price_band: 'LOW' });
+
+      const listed = svc.listCandidates(s.id);
+      expect(listed.find(x => x.id === c1.id)?.venue_context?.price_band).toBe('LOW');
+      expect(listed.find(x => x.id === c2.id)?.venue_context).toBeNull();
+    });
+
+    it('rejects a context upsert for a candidate of another session', () => {
+      const s = svc.create(1, { title: 'X' });
+      const s2 = svc.create(1, { title: 'Y' });
+      const foreign = svc.addCandidate(s2.id, addPlace(s2.trip_id), { type: 'host', id: 1 });
+      expect(() => svc.upsertVenueContext(s.id, foreign.id, { noise_level: 'QUIET' })).toThrow(NotFoundError);
+    });
+  });
 });

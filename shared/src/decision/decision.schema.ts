@@ -338,8 +338,47 @@ export const decisionParticipantSessionResponseSchema = z.object({
 export type DecisionParticipantSessionResponse = z.infer<typeof decisionParticipantSessionResponseSchema>;
 
 /**
+ * M2-08 — the decision-specific semantic overlay (plan §17-18): the small
+ * set of attributes that materially swing a café pick. Typed fields are the
+ * ranking-critical dimensions the resolver matches deterministically; tag
+ * lists are flexible descriptors. `source`/`confidence` preserve provenance
+ * ('manual_curator' for the host's edit surface in V1).
+ */
+export const VENUE_NOISE_LEVELS = ['QUIET', 'MODERATE', 'LIVELY', 'UNKNOWN'] as const;
+export const VENUE_PRICE_BANDS = ['LOW', 'MEDIUM', 'HIGH', 'UNKNOWN'] as const;
+export const VENUE_PARKING = ['NONE', 'LIMITED', 'EASY', 'UNKNOWN'] as const;
+export const venueFriendlinessSchema = z.number().int().min(1).max(5).nullable();
+
+export const decisionVenueContextSchema = z.object({
+  id: idSchema,
+  decision_session_id: idSchema,
+  candidate_id: idSchema,
+  price_band: z.enum(VENUE_PRICE_BANDS),
+  noise_level: z.enum(VENUE_NOISE_LEVELS),
+  group_friendliness: venueFriendlinessSchema,
+  laptop_friendliness: venueFriendlinessSchema,
+  photo_friendliness: venueFriendlinessSchema,
+  parking: z.enum(VENUE_PARKING),
+  vibe_tags: z.array(z.string()),
+  drink_tags: z.array(z.string()),
+  occasion_tags: z.array(z.string()),
+  source: z.string(),
+  confidence: z.number().nullable(),
+  updated_at: z.string(),
+});
+export type DecisionVenueContext = z.infer<typeof decisionVenueContextSchema>;
+
+/** PUT /api/decisions/:id/candidates/:cid/context — the host's manual overlay. */
+export const upsertVenueContextRequestSchema = decisionVenueContextSchema
+  .omit({ id: true, decision_session_id: true, candidate_id: true, updated_at: true })
+  .partial()
+  .extend({ source: z.string().trim().min(1).max(50).optional(), confidence: z.number().min(0).max(1).nullish() });
+export type UpsertVenueContextRequest = z.infer<typeof upsertVenueContextRequestSchema>;
+
+/**
  * A candidate venue pinned to this session. `place_id` references the
- * trip-scoped TREK Place; `snapshot` preserves the evidence the resolver read.
+ * trip-scoped TREK Place; `snapshot` preserves the evidence the resolver read;
+ * `venue_context` is the editable semantic overlay the resolver also reads.
  */
 export const decisionCandidateSchema = z.object({
   id: idSchema,
@@ -349,6 +388,7 @@ export const decisionCandidateSchema = z.object({
   added_by_type: z.enum(['host', 'participant', 'system']),
   added_by_id: idSchema.nullable(),
   snapshot: decisionCandidateSnapshotSchema.nullable(),
+  venue_context: decisionVenueContextSchema.nullish(),
   created_at: z.string(),
 });
 export type DecisionCandidate = z.infer<typeof decisionCandidateSchema>;

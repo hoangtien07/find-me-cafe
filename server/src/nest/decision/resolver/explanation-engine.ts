@@ -1,5 +1,5 @@
 import type { DecisionCandidate, DecisionExplanation } from '@trek/shared';
-import type { ConstraintFinding, ParticipantContext } from './resolver.types';
+import type { ConstraintFinding, DimensionScores, ParticipantContext } from './resolver.types';
 import type { DecisionTravelEstimate } from '@trek/shared';
 import type { FairnessMetrics } from './fairness-engine';
 
@@ -16,7 +16,7 @@ export function explainCandidate(input: {
   estimateByParticipant: Map<number, DecisionTravelEstimate | null>;
   metrics: FairnessMetrics | null;
   unknowns: ConstraintFinding[];
-  scores: { groupFit: number; placeFit: number; contextFit: number };
+  scores: DimensionScores;
 }): DecisionExplanation {
   const { participants, estimateByParticipant, metrics, unknowns, scores } = input;
 
@@ -51,6 +51,11 @@ export function explainCandidate(input: {
   }
   if (scores.groupFit >= 0.75) strengths.push('phù hợp sở thích nhóm');
   if (scores.placeFit >= 0.8) strengths.push('đánh giá cao');
+  // M2-08 — typed VenueContext evidence reads better than the aggregate: name
+  // the matched dims, name the missed ones among the tradeoffs.
+  for (const label of (scores.contextMatched ?? []).slice(0, 2)) {
+    strengths.push(`khớp: ${label}`);
+  }
 
   const tradeoffs: string[] = [];
   if (metrics && metrics.range > 15 * 60) {
@@ -58,6 +63,9 @@ export function explainCandidate(input: {
   }
   if (scores.groupFit < 0.5) tradeoffs.push('ít khớp sở thích đã khai báo');
   if (scores.placeFit < 0.6) tradeoffs.push('chất lượng quán chưa nổi bật');
+  for (const label of (scores.contextMissed ?? []).slice(0, 2)) {
+    tradeoffs.push(`không khớp: ${label}`);
+  }
   for (const u of unknowns.slice(0, 3)) {
     tradeoffs.push(`chưa kiểm chứng: ${u.detail}`);
   }

@@ -41,6 +41,9 @@ export interface DimensionScores {
   travelFairness: number;
   contextFit: number;
   trustScore: number;
+  /** M2-08 — VN labels of the VenueContext dims that matched/missed (explainable evidence). */
+  contextMatched?: string[];
+  contextMissed?: string[];
 }
 
 /** What resolve() loads before the engines run. */

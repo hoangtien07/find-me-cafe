@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { GoogleRoutesMatrixProvider } from '../../../src/nest/decision/travel/google-routes.provider';
 import { OsrmTableMatrixProvider } from '../../../src/nest/decision/travel/osrm-table.provider';
 import { MockTravelMatrixProvider } from '../../../src/nest/decision/travel/mock-travel-matrix.provider';
+import { deriveDecision } from '../../../src/app-config/derive';
 import { selectMatrixProvider } from '../../../src/nest/decision/travel/matrix-provider-select';
 import type { TravelMatrixInput } from '../../../src/nest/decision/travel/travel-matrix.provider';
 
@@ -113,19 +114,25 @@ describe('OsrmTableMatrixProvider', () => {
 
 describe('selectMatrixProvider', () => {
   it('mock is the default and stays explicitly selectable', () => {
-    expect(selectMatrixProvider({})).toBeInstanceOf(MockTravelMatrixProvider);
-    expect(selectMatrixProvider({ DECISION_MATRIX_PROVIDER: 'mock' })).toBeInstanceOf(MockTravelMatrixProvider);
-  });
-
-  it('google without a key refuses — never a silent mock fallback', () => {
-    expect(() => selectMatrixProvider({ DECISION_MATRIX_PROVIDER: 'google' })).toThrow(/GOOGLE_ROUTES_API_KEY/);
-    expect(selectMatrixProvider({ DECISION_MATRIX_PROVIDER: 'google', GOOGLE_ROUTES_API_KEY: 'k' })).toBeInstanceOf(
-      GoogleRoutesMatrixProvider,
+    expect(selectMatrixProvider(deriveDecision({}))).toBeInstanceOf(MockTravelMatrixProvider);
+    expect(selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'mock' }))).toBeInstanceOf(
+      MockTravelMatrixProvider,
     );
   });
 
+  it('google without a key refuses — never a silent mock fallback', () => {
+    expect(() => selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'google' }))).toThrow(
+      /GOOGLE_ROUTES_API_KEY/,
+    );
+    expect(
+      selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'google', GOOGLE_ROUTES_API_KEY: 'k' })),
+    ).toBeInstanceOf(GoogleRoutesMatrixProvider);
+  });
+
   it('osrm selects the table adapter; unknown names refuse', () => {
-    expect(selectMatrixProvider({ DECISION_MATRIX_PROVIDER: 'osrm' })).toBeInstanceOf(OsrmTableMatrixProvider);
-    expect(() => selectMatrixProvider({ DECISION_MATRIX_PROVIDER: 'magic' })).toThrow(/unknown/);
+    expect(selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'osrm' }))).toBeInstanceOf(
+      OsrmTableMatrixProvider,
+    );
+    expect(() => selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'magic' }))).toThrow(/unknown/);
   });
 });
