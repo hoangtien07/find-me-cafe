@@ -101,6 +101,7 @@ export const mapsAutocompleteSuggestionSchema = z.object({
   lat: z.number().optional(),
   lng: z.number().optional(),
 });
+export type MapsAutocompleteSuggestion = z.infer<typeof mapsAutocompleteSuggestionSchema>;
 export const mapsAutocompleteResultSchema = z.object({
   suggestions: z.array(mapsAutocompleteSuggestionSchema),
   source: z.string(),

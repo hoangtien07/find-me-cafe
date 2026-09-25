@@ -91,16 +91,51 @@ export function evaluateConstraints(input: {
     }
   }
 
-  // Closed-at-time evidence: only when the outing is scheduled. V1 has no
-  // opening-hours source — when scheduled, the missing evidence is UNKNOWN.
-  if (session.scheduled_at && (snap?.opening_hours === null || snap?.opening_hours === undefined)) {
-    unknowns.push({
-      type: 'opening_hours',
-      detail: 'session is scheduled but venue opening hours are unknown',
-    });
+  // CLOSED_AT_DECISION_TIME: only when the outing is scheduled. Periods are
+  // evaluated against the scheduled local wall time (the product targets VN
+  // groups — one timezone — so no tz lookup is needed). Missing periods are
+  // UNKNOWN; a special-day override is UNKNOWN too rather than a guessed PASS.
+  if (session.scheduled_at) {
+    const periods = snap?.opening_periods ?? null;
+    const specialDays = snap?.opening_special_days ?? null;
+    const when = new Date(session.scheduled_at);
+    if (Number.isNaN(when.getTime())) {
+      unknowns.push({ type: 'opening_hours', detail: 'session time unparseable — hours unverifiable' });
+    } else if (specialDays && specialDays.length > 0 && specialDays.includes(toIsoDay(when))) {
+      unknowns.push({ type: 'opening_hours', detail: 'venue has special hours that day — weekly pattern does not apply' });
+    } else if (!periods || periods.length === 0) {
+      unknowns.push({ type: 'opening_hours', detail: 'session is scheduled but venue opening hours are unknown' });
+    } else if (!isOpenAt(periods, when)) {
+      violations.push({ type: 'closed_at_time', detail: 'venue is closed at the scheduled time' });
+    }
   }
 
   return { eligible: violations.length === 0, violations, unknowns };
+}
+
+type OpenPeriod = { open: { day: number; hour: number; minute: number }; close?: { day: number; hour: number; minute: number } | null };
+
+const mins = (p: { hour: number; minute: number }): number => p.hour * 60 + p.minute;
+const toIsoDay = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * Is the venue open at `when`, per provider opening periods? Period days use
+ * Google's convention (Sunday = 0), matching JS getDay(). A null close means
+ * "never closes"; overnight periods straddle their open day into the next.
+ */
+export function isOpenAt(periods: OpenPeriod[], when: Date): boolean {
+  const day = when.getDay();
+  const t = when.getHours() * 60 + when.getMinutes();
+  return periods.some(period => {
+    if (period.close == null) return true;
+    const { open, close } = period;
+    if (open.day === close.day) {
+      return day === open.day && t >= mins(open) && t < mins(close);
+    }
+    // Overnight: open on its day through midnight, closing the following day.
+    return (day === open.day && t >= mins(open)) || (day === close.day && t < mins(close));
+  });
 }
 
 /** Extract the vetoed category string from a deal-breaker's value payload. */

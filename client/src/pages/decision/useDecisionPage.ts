@@ -4,6 +4,7 @@ import { decisionApi } from '../../api/decision'
 import { decisionRepo } from '../../repo/decisionRepo'
 import { joinTrip, leaveTrip } from '../../api/websocket'
 import { placeRepo } from '../../repo/placeRepo'
+import { decisionPlacesRepo, type VenuePick, type VenueSuggestion } from '../../repo/decisionPlaces'
 import { useDecisionStore } from '../../store/decisionStore'
 import { useDecisionRealtime } from '../../hooks/useDecisionRealtime'
 import type { DecisionCandidate } from '@trek/shared'
@@ -32,6 +33,16 @@ export function useDecisionPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [tripPlaces, setTripPlaces] = useState<Place[]>([])
+
+  // Venue search (M2-02/03): query → debounced autocomplete → pick preview
+  // (details + photo) → persist Place + candidate. The picked venue keeps its
+  // provider evidence until it lands as a candidate or is dismissed.
+  const [searchQuery, setSearchQuery] = useState('')
+  const [suggestions, setSuggestions] = useState<VenueSuggestion[]>([])
+  const [searching, setSearching] = useState(false)
+  const [picked, setPicked] = useState<VenuePick | null>(null)
+  const [pickLoading, setPickLoading] = useState(false)
+  const [addingPick, setAddingPick] = useState(false)
 
   useDecisionRealtime()
 
@@ -87,6 +98,37 @@ export function useDecisionPage() {
     if (pendingResultRunId != null) void decisionRepo.refreshLatest(sessionId)
   }, [pendingResultRunId, sessionId])
 
+  // Debounced autocomplete. Aborts the in-flight call on every keystroke and
+  // on unmount; a cleared query clears the list without a network call.
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (q.length < 2) {
+      setSuggestions([])
+      setSearching(false)
+      return
+    }
+    const ctl = new AbortController()
+    const t = setTimeout(() => {
+      setSearching(true)
+      decisionPlacesRepo
+        .search(q, ctl.signal)
+        .then(res => {
+          if (ctl.signal.aborted) return
+          setSuggestions(res.suggestions)
+        })
+        .catch(() => {
+          if (!ctl.signal.aborted) setSuggestions([])
+        })
+        .finally(() => {
+          if (!ctl.signal.aborted) setSearching(false)
+        })
+    }, 300)
+    return () => {
+      clearTimeout(t)
+      ctl.abort()
+    }
+  }, [searchQuery])
+
   const handleInvite = useCallback(async () => {
     const link = await decisionRepo.inviteLink(sessionId)
     setInviteLink(link)
@@ -98,7 +140,7 @@ export function useDecisionPage() {
   const handleAddCandidate = useCallback(
     async (placeId: number | string) => {
       try {
-        await decisionApi.addCandidate(sessionId, placeId)
+        await decisionApi.addCandidate(sessionId, { place_id: Number(placeId) })
         setError(null)
       } catch {
         setError('Không thêm được quán — có thể đã có trong danh sách.')
@@ -107,7 +149,40 @@ export function useDecisionPage() {
     [sessionId],
   )
 
-  /** Quick-add: create the Place on the technical trip, then pin it. */
+  /** Pick a suggestion → fetch its details + photo for the preview card. */
+  const handlePickSuggestion = useCallback(async (suggestion: VenueSuggestion) => {
+    setPicked(null)
+    setPickLoading(true)
+    try {
+      const pick = await decisionPlacesRepo.load(suggestion)
+      setPicked(pick)
+      if (!pick) setError('Không lấy được thông tin quán — thử tên khác.')
+    } finally {
+      setPickLoading(false)
+    }
+  }, [])
+
+  const handleDismissPick = useCallback(() => setPicked(null), [])
+
+  /** Pin the picked venue: Place + candidate with the fetched evidence. */
+  const handleAddPicked = useCallback(async () => {
+    if (!picked) return
+    setAddingPick(true)
+    try {
+      const tripId = useDecisionStore.getState().session!.trip_id
+      await decisionPlacesRepo.addCandidate(sessionId, Number(tripId), picked)
+      setPicked(null)
+      setSearchQuery('')
+      setSuggestions([])
+      setError(null)
+    } catch {
+      setError('Không thêm được quán — có thể đã có trong danh sách.')
+    } finally {
+      setAddingPick(false)
+    }
+  }, [picked, sessionId])
+
+  /** Quick-add (dev affordance): create the Place by hand, then pin it. */
   const handleCreatePlace = useCallback(
     async (name: string, lat: number | null, lng: number | null) => {
       try {
@@ -115,7 +190,7 @@ export function useDecisionPage() {
           name,
           ...(lat != null && lng != null ? { lat, lng } : {}),
         })
-        await decisionApi.addCandidate(sessionId, place.id)
+        await decisionApi.addCandidate(sessionId, { place_id: place.id })
         setTripPlaces(await placeRepo.list(useDecisionStore.getState().session!.trip_id).then(r => r.places))
         setError(null)
       } catch {
@@ -177,6 +252,21 @@ export function useDecisionPage() {
   const candidatePlaceIds = new Set(candidates.map((c: DecisionCandidate) => Number(c.place_id)))
   const addablePlaces = tripPlaces.filter(p => !candidatePlaceIds.has(Number(p.id)))
 
+  // Provider ids already pinned — a pick carrying one of them is a duplicate
+  // before it reaches the server (which dedupes again on the same rule).
+  const candidateProviderIds = new Set(
+    candidates
+      .map(c => c.snapshot?.google_place_id ?? c.snapshot?.osm_id ?? c.snapshot?.amap_poi_id)
+      .filter((x): x is string => Boolean(x)),
+  )
+
+  // True when the previewed pick is already pinned under a provider id — the
+  // add button disables itself instead of bouncing off the server's dedup.
+  const pickedIsDuplicate = picked != null && (() => {
+    const id = decisionPlacesRepo.providerIdOf(picked)
+    return id != null && candidateProviderIds.has(id)
+  })()
+
   return {
     sessionId,
     session,
@@ -189,8 +279,19 @@ export function useDecisionPage() {
     inviteLink,
     resolving,
     addablePlaces,
+    searchQuery,
+    suggestions,
+    searching,
+    picked,
+    pickLoading,
+    addingPick,
+    pickedIsDuplicate,
     handleInvite,
     handleAddCandidate,
+    handleSearchChange: setSearchQuery,
+    handlePickSuggestion,
+    handleDismissPick,
+    handleAddPicked,
     handleCreatePlace,
     handleRemoveCandidate,
     handleResolve,

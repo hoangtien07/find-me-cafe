@@ -278,6 +278,42 @@ describe('DecisionService', () => {
       expect(() => svc.addCandidate(s.id, placeId, { type: 'host', id: 1 })).toThrow(ValidationError);
     });
 
+    it('merges provider evidence into the snapshot and marks source=search', () => {
+      const s = svc.create(1, { title: 'X' });
+      const placeId = addPlace(s.trip_id);
+      const c = svc.addCandidate(s.id, placeId, { type: 'host', id: 1 }, {
+        source: 'trek-places',
+        retrieved_at: '2026-09-25T01:00:00.000Z',
+        rating: 4.6,
+        rating_count: 231,
+        open_now: true,
+        opening_weekdays: ['Monday: 07:00 – 22:00'],
+        opening_periods: [{ open: { day: 1, hour: 7, minute: 0 }, close: { day: 1, hour: 22, minute: 0 } }],
+        facts: { cuisine: 'coffee_shop', internet_access: 'yes' },
+        google_maps_url: null,
+      });
+      expect(c.source).toBe('search');
+      expect(c.snapshot?.rating).toBe(4.6);
+      expect(c.snapshot?.rating_count).toBe(231);
+      expect(c.snapshot?.open_now).toBe(true);
+      expect(c.snapshot?.opening_periods?.[0]?.open.hour).toBe(7);
+      expect(c.snapshot?.facts?.internet_access).toBe('yes');
+      expect(c.snapshot?.source).toBe('trek-places');
+      expect(c.snapshot?.retrieved_at).toBe('2026-09-25T01:00:00.000Z');
+    });
+
+    it('dedupes by provider id across different place rows', () => {
+      const s = svc.create(1, { title: 'X' });
+      const p1 = Number(
+        testDb.prepare("INSERT INTO places (trip_id, name, osm_id) VALUES (?, 'A', 'node:42')").run(s.trip_id).lastInsertRowid,
+      );
+      const p2 = Number(
+        testDb.prepare("INSERT INTO places (trip_id, name, osm_id) VALUES (?, 'A dup', 'node:42')").run(s.trip_id).lastInsertRowid,
+      );
+      svc.addCandidate(s.id, p1, { type: 'host', id: 1 });
+      expect(() => svc.addCandidate(s.id, p2, { type: 'host', id: 1 })).toThrow(ValidationError);
+    });
+
     it('removes a candidate and broadcasts candidate-removed', () => {
       const s = svc.create(1, { title: 'X' });
       const c = svc.addCandidate(s.id, addPlace(s.trip_id), { type: 'host', id: 1 });
