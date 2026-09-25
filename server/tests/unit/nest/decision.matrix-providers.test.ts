@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { GoogleRoutesMatrixProvider } from '../../../src/nest/decision/travel/google-routes.provider';
 import { OsrmTableMatrixProvider } from '../../../src/nest/decision/travel/osrm-table.provider';
+import { VietmapMatrixProvider } from '../../../src/nest/decision/travel/vietmap-matrix.provider';
 import { MockTravelMatrixProvider } from '../../../src/nest/decision/travel/mock-travel-matrix.provider';
 import { deriveDecision } from '../../../src/app-config/derive';
 import { selectMatrixProvider } from '../../../src/nest/decision/travel/matrix-provider-select';
@@ -112,6 +113,49 @@ describe('OsrmTableMatrixProvider', () => {
   });
 });
 
+describe('VietmapMatrixProvider', () => {
+  it('GETs /api/matrix/v4 with the key, lat-first points, index lists and vehicle=motorcycle', async () => {
+    const seen: { url?: string } = {};
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      seen.url = url;
+      return new Response(JSON.stringify({ code: 'OK', durations: [[120]], distances: [[1500]] }), { status: 200 });
+    }));
+    const p = new VietmapMatrixProvider('KEY', 'https://vietmap.test');
+    await p.compute({ origins: [origins[0]!], destinations, mode: 'driving' });
+    const u = new URL(seen.url ?? '');
+    expect(`${u.origin}${u.pathname}`).toBe('https://vietmap.test/api/matrix/v4');
+    expect(u.searchParams.get('apikey')).toBe('KEY');
+    expect(u.searchParams.getAll('point')).toEqual(['10.77,106.7', '10.79,106.69']);
+    expect(u.searchParams.get('vehicle')).toBe('motorcycle');
+    expect(u.searchParams.get('sources')).toBe('0');
+    expect(u.searchParams.get('destinations')).toBe('1');
+  });
+
+  it('maps OK cells to ok with parsed duration/distance; null becomes no_route', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ code: 'OK', durations: [[120, null]], distances: [[1500.4, null]] }), { status: 200 }),
+    ));
+    const p = new VietmapMatrixProvider('KEY');
+    const { cells, provider } = await p.compute({ origins: [origins[0]!], destinations: [...destinations, destinations[0]!], mode: 'driving' });
+    expect(provider).toBe('vietmap');
+    expect(cells[0]).toMatchObject({ status: 'ok', distanceMeters: 1500, durationSeconds: 120 });
+    expect(cells[1]).toMatchObject({ status: 'no_route', distanceMeters: null, durationSeconds: null });
+  });
+
+  it('non-OK codes, non-200s and profile-less modes fail the call rather than faking results', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ code: 'OVER_DAILY_LIMIT' }), { status: 200 }),
+    ));
+    const p = new VietmapMatrixProvider('KEY');
+    await expect(p.compute(input())).rejects.toThrow(/unexpected response/);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 403 })));
+    await expect(p.compute(input())).rejects.toThrow(/403/);
+    await expect(p.compute(input('walking'))).rejects.toThrow(/no profile/);
+    await expect(p.compute(input('cycling'))).rejects.toThrow(/no profile/);
+    await expect(p.compute(input('transit'))).rejects.toThrow(/no profile/);
+  });
+});
+
 describe('selectMatrixProvider', () => {
   it('mock is the default and stays explicitly selectable', () => {
     expect(selectMatrixProvider(deriveDecision({}))).toBeInstanceOf(MockTravelMatrixProvider);
@@ -134,5 +178,14 @@ describe('selectMatrixProvider', () => {
       OsrmTableMatrixProvider,
     );
     expect(() => selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'magic' }))).toThrow(/unknown/);
+  });
+
+  it('vietmap requires its key — never a silent mock fallback', () => {
+    expect(() => selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'vietmap' }))).toThrow(
+      /VIETMAP_API_KEY/,
+    );
+    expect(
+      selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'vietmap', VIETMAP_API_KEY: 'k' })),
+    ).toBeInstanceOf(VietmapMatrixProvider);
   });
 });

@@ -3,6 +3,7 @@ import type { TravelMatrixProvider } from './travel-matrix.provider';
 import { MockTravelMatrixProvider } from './mock-travel-matrix.provider';
 import { GoogleRoutesMatrixProvider } from './google-routes.provider';
 import { OsrmTableMatrixProvider } from './osrm-table.provider';
+import { VietmapMatrixProvider } from './vietmap-matrix.provider';
 
 const DEFAULT_MATRIX_TIMEOUT_MS = 10_000;
 
@@ -13,7 +14,7 @@ function parseTimeoutMs(v: string | undefined): number {
 
 /**
  * Picks the TravelMatrixProvider for this deployment from
- * `DECISION_MATRIX_PROVIDER` ('mock' | 'google' | 'osrm', default 'mock').
+ * `DECISION_MATRIX_PROVIDER` ('mock' | 'google' | 'osrm' | 'vietmap', default 'mock').
  *
  * Fail closed: selecting a real provider without its configuration throws at
  * boot — never a silent fall back to fixture data while pretending the matrix
@@ -34,7 +35,14 @@ export function selectMatrixProvider(env: ReturnType<typeof deriveDecision>): Tr
     }
     case 'osrm':
       return new OsrmTableMatrixProvider(env.osrmMatrixApiBase?.trim() || undefined, timeoutMs);
+    case 'vietmap': {
+      const key = env.vietmapApiKey?.trim();
+      if (!key) {
+        throw new Error('DECISION_MATRIX_PROVIDER=vietmap requires VIETMAP_API_KEY');
+      }
+      return new VietmapMatrixProvider(key, env.vietmapApiBase?.trim() || undefined, timeoutMs);
+    }
     default:
-      throw new Error(`unknown DECISION_MATRIX_PROVIDER '${name}' (mock|google|osrm)`);
+      throw new Error(`unknown DECISION_MATRIX_PROVIDER '${name}' (mock|google|osrm|vietmap)`);
   }
 }
