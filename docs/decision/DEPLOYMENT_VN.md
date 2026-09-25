@@ -52,3 +52,48 @@ VN ở mức alpha. Nâng cấp theo thứ tự ưu tiên:
 - Self-host bằng Dockerfile hiện có; đặt server region gần VN (Singapore/HCM)
   để giảm latency matrix + tile.
 - PWA/offline core của TREK đã sẵn — participant flow là online-only theo spec.
+
+## Deploy Railway (all-in-one)
+
+Một service duy nhất từ `Dockerfile` ở repo root — image đã bundle client +
+server + WS, serve trên port từ biến `PORT` (Railway tự inject; Dockerfile
+default 3000). Healthcheck sẵn: `GET /api/health`.
+
+### Các bước trên dashboard
+
+1. New Project → Deploy from GitHub repo → chọn repo này (Railway tự nhận
+   Dockerfile).
+2. Settings → Volumes → tạo **2 volumes**:
+   - `/app/data` — SQLite (`travel.db`) + JWT/encryption keys + logs.
+   - `/app/uploads` — ảnh upload, avatars, covers.
+   KHÔNG mount volume ở `/app` — entrypoint sẽ fail (docs trong
+   `server/scripts/entrypoint.sh`).
+3. Variables — bảng dưới.
+4. Settings → Networking → Generate Domain → copy domain vào `APP_URL` +
+   `ALLOWED_ORIGINS` rồi redeploy.
+
+### Variables
+
+| Biến | Giá trị | Ghi chú |
+|---|---|---|
+| `APP_URL` | `https://<domain>.up.railway.app` | set sau khi generate domain |
+| `ALLOWED_ORIGINS` | `https://<domain>.up.railway.app` | same-origin → có thể bỏ trống |
+| `TRUST_PROXY` | `1` | cần khi chạy sau TLS proxy của Railway |
+| `FORCE_HTTPS` | `true` | HTTPS redirect + secure cookies |
+| `ADMIN_PASSWORD` | `<tự đặt>` | mật khẩu admin lần đầu |
+| `DECISION_MATRIX_PROVIDER` | `vietmap` | ETA xe máy cho VN |
+| `VIETMAP_API_KEY` | `<key từ vietmap.vn>` | gõ "API key (search, route...)" |
+| `PORT` | — | Railway inject, không set tay |
+
+### Qua railway CLI
+
+```bash
+railway init           # link project mới
+railway up             # build từ Dockerfile + deploy
+railway volume add --mount-path /app/data
+railway volume add --mount-path /app/uploads
+railway domain         # sinh domain
+```
+
+Sau đó set biến trong bảng trên bằng `railway variables set KEY=value`.
+Xác minh deploy: `curl https://<domain>/api/health` → `{"status":"ok"}`.
