@@ -103,4 +103,21 @@ describe('TravelMatrixService + MockTravelMatrixProvider', () => {
     const recomputed = await matrix.computeSessionMatrix(5, 'driving', true);
     expect(recomputed[0]!.provider).toBe('mock');
   });
+
+  it('M2-04: participants with their own travel_mode get per-mode cells (session default for the rest)', async () => {
+    // Walker on foot, driver inherits the session's 'driving' default.
+    testDb
+      .prepare("INSERT INTO decision_participants (id, decision_session_id, display_name, origin_lat, origin_lng, travel_mode) VALUES (1, 5, 'Walker', 10.77, 106.7, 'walking')")
+      .run();
+    addParticipant(2, 10.77, 106.7); // NULL mode → default 'driving'
+    addCandidate(1, 10.78, 106.71);
+    const rows = await matrix.computeSessionMatrix(5, 'driving');
+    const walker = rows.find((r) => r.participant_id === 1)!;
+    const driver = rows.find((r) => r.participant_id === 2)!;
+    expect(walker.travel_mode).toBe('walking');
+    expect(driver.travel_mode).toBe('driving');
+    // Same route — same distance, but the mode's city speed splits the durations.
+    expect(walker.distance_meters).toBe(driver.distance_meters);
+    expect(walker.duration_seconds!).toBeGreaterThan(driver.duration_seconds!);
+  });
 });

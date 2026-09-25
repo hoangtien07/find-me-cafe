@@ -142,9 +142,21 @@ describe('decision schema migration', () => {
     // Simulate an install whose table was created before revoked_at existed:
     // old column set, version rewound to just before the backfill migration.
     db.exec('ALTER TABLE decision_participant_sessions DROP COLUMN revoked_at');
-    db.prepare('UPDATE schema_version SET version = ?').run(version - 1);
+    // The backfill migration sits two steps back — the appended
+    // decision_participants.travel_mode migration (M2-04) occupies the slot
+    // right after it, so rewind far enough for it to replay.
+    db.prepare('UPDATE schema_version SET version = ?').run(version - 2);
     runMigrations(db);
     expect(cols(db, 'decision_participant_sessions').has('revoked_at')).toBe(true);
     expect(db.prepare('SELECT version FROM schema_version').get()).toEqual({ version });
+  });
+
+  it('MIG-DEC-009: participants carry an optional per-person travel_mode', () => {
+    const db = freshDb();
+    expect(cols(db, 'decision_participants').has('travel_mode')).toBe(true);
+    // Nullable — a NULL mode inherits the session's default at matrix time.
+    db.prepare('INSERT INTO decision_sessions (id, trip_id, created_by_user_id) VALUES (1, 1, 1)').run();
+    db.prepare("INSERT INTO decision_participants (id, decision_session_id, display_name) VALUES (9, 1, 'An')").run();
+    expect(db.prepare('SELECT travel_mode FROM decision_participants WHERE id = 9').get()).toEqual({ travel_mode: null });
   });
 });

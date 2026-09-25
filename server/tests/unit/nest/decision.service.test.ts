@@ -196,6 +196,7 @@ describe('DecisionService', () => {
         max_travel_minutes: 25,
         budget_min: 30000,
         budget_max: 80000,
+        travel_mode: 'cycling',
         preferences: [
           { key: 'drink', value: 'coffee', weight: 2 },
           { key: 'vibe', value: 'quiet', is_hard: true },
@@ -204,6 +205,7 @@ describe('DecisionService', () => {
       });
       expect(p.origin_label).toBe('Q1');
       expect(p.max_travel_minutes).toBe(25);
+      expect(p.travel_mode).toBe('cycling');
       expect(p.submitted_at).toBeTruthy();
       expect(broadcast).toHaveBeenCalledWith(
         String(session.trip_id),

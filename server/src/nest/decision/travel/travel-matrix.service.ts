@@ -37,10 +37,15 @@ export class TravelMatrixService {
   /**
    * Compute (or reuse fresh cache rows for) the full session matrix. Returns
    * the persisted cells. `force` recomputes everything — used by resolve.
+   *
+   * Participants are bucketed by effective mode (their own `travel_mode`,
+   * else `defaultMode` — the session default): one provider call per bucket,
+   * cells persisted stamped with the mode they were actually computed at, so
+   * a walker and a driver in the same room each get honest estimates.
    */
-  async computeSessionMatrix(sessionId: number, travelMode: DecisionTravelMode, force = false): Promise<DecisionTravelEstimate[]> {
-    const participants = this.db.all<{ id: number; origin_lat: number | null; origin_lng: number | null }>(
-      'SELECT id, origin_lat, origin_lng FROM decision_participants WHERE decision_session_id = ?',
+  async computeSessionMatrix(sessionId: number, defaultMode: DecisionTravelMode, force = false): Promise<DecisionTravelEstimate[]> {
+    const participants = this.db.all<{ id: number; origin_lat: number | null; origin_lng: number | null; travel_mode: DecisionTravelMode | null }>(
+      'SELECT id, origin_lat, origin_lng, travel_mode FROM decision_participants WHERE decision_session_id = ?',
       sessionId,
     );
     const candidates = this.db.all<{ id: number; lat: number | null; lng: number | null }>(
@@ -51,16 +56,6 @@ export class TravelMatrixService {
       sessionId,
     );
 
-    const origins: TravelCoordinate[] = [];
-    const originIndex: (number | null)[] = []; // participant index -> origin index or null
-    for (const p of participants) {
-      if (p.origin_lat === null || p.origin_lng === null) {
-        originIndex.push(null);
-      } else {
-        originIndex.push(origins.length);
-        origins.push({ lat: p.origin_lat, lng: p.origin_lng });
-      }
-    }
     const destinations: TravelCoordinate[] = [];
     const destinationIndex: (number | null)[] = [];
     for (const c of candidates) {
@@ -70,31 +65,6 @@ export class TravelMatrixService {
         destinationIndex.push(destinations.length);
         destinations.push({ lat: c.lat, lng: c.lng });
       }
-    }
-
-    // Cells that already exist and are still fresh stay as-is (cache).
-    const freshCutoff = new Date(Date.now() - ESTIMATE_TTL_MS).toISOString();
-    const fresh = new Set<string>();
-    if (!force) {
-      for (const row of this.db.all<{ participant_id: number; candidate_id: number }>(
-        `SELECT participant_id, candidate_id FROM decision_travel_estimates
-          WHERE decision_session_id = ? AND travel_mode = ? AND computed_at > ?`,
-        sessionId,
-        travelMode,
-        freshCutoff,
-      )) {
-        fresh.add(`${row.participant_id}:${row.candidate_id}`);
-      }
-    }
-
-    const result =
-      origins.length > 0 && destinations.length > 0
-        ? await this.provider.compute({ origins, destinations, mode: travelMode }).catch(() => null)
-        : null;
-    const providerName = result?.provider ?? 'unknown';
-    const cellByIdx = new Map<string, { distanceMeters: number | null; durationSeconds: number | null; status: string }>();
-    for (const cell of result?.cells ?? []) {
-      cellByIdx.set(`${cell.originIndex}:${cell.destinationIndex}`, cell);
     }
 
     const insert = this.db.prepare(
@@ -109,33 +79,81 @@ export class TravelMatrixService {
                      computed_at = excluded.computed_at`,
     );
 
-    this.db.transaction(() => {
-      for (let pi = 0; pi < participants.length; pi++) {
-        const p = participants[pi]!;
-        for (let ci = 0; ci < candidates.length; ci++) {
-          const c = candidates[ci]!;
-          if (fresh.has(`${p.id}:${c.id}`)) continue;
-          const oi = originIndex[pi];
-          const di = destinationIndex[ci];
-          let status: string;
-          let distance: number | null = null;
-          let duration: number | null = null;
-          if (oi === null) {
-            status = 'missing_origin';
-          } else if (di === null) {
-            status = 'missing_destination';
-          } else if (result === null) {
-            status = 'error';
-          } else {
-            const cell = cellByIdx.get(`${oi}:${di}`);
-            status = cell?.status ?? 'error';
-            distance = cell?.distanceMeters ?? null;
-            duration = cell?.durationSeconds ?? null;
-          }
-          insert.run(sessionId, p.id, c.id, travelMode, distance, duration, status, providerName);
+    const freshCutoff = new Date(Date.now() - ESTIMATE_TTL_MS).toISOString();
+
+    // Bucket participants by effective mode — provider calls are per mode.
+    const buckets = new Map<DecisionTravelMode, typeof participants>();
+    for (const p of participants) {
+      const mode = p.travel_mode ?? defaultMode;
+      const bucket = buckets.get(mode) ?? [];
+      bucket.push(p);
+      buckets.set(mode, bucket);
+    }
+
+    for (const [mode, group] of buckets) {
+      const origins: TravelCoordinate[] = [];
+      const originIndex: (number | null)[] = []; // bucket index -> origin index or null
+      for (const p of group) {
+        if (p.origin_lat === null || p.origin_lng === null) {
+          originIndex.push(null);
+        } else {
+          originIndex.push(origins.length);
+          origins.push({ lat: p.origin_lat, lng: p.origin_lng });
         }
       }
-    });
+
+      // Cells that already exist and are still fresh stay as-is (cache).
+      const fresh = new Set<string>();
+      if (!force) {
+        for (const row of this.db.all<{ participant_id: number; candidate_id: number }>(
+          `SELECT participant_id, candidate_id FROM decision_travel_estimates
+            WHERE decision_session_id = ? AND travel_mode = ? AND computed_at > ?`,
+          sessionId,
+          mode,
+          freshCutoff,
+        )) {
+          fresh.add(`${row.participant_id}:${row.candidate_id}`);
+        }
+      }
+
+      const result =
+        origins.length > 0 && destinations.length > 0
+          ? await this.provider.compute({ origins, destinations, mode }).catch(() => null)
+          : null;
+      const providerName = result?.provider ?? 'unknown';
+      const cellByIdx = new Map<string, { distanceMeters: number | null; durationSeconds: number | null; status: string }>();
+      for (const cell of result?.cells ?? []) {
+        cellByIdx.set(`${cell.originIndex}:${cell.destinationIndex}`, cell);
+      }
+
+      this.db.transaction(() => {
+        for (let pi = 0; pi < group.length; pi++) {
+          const p = group[pi]!;
+          for (let ci = 0; ci < candidates.length; ci++) {
+            const c = candidates[ci]!;
+            if (fresh.has(`${p.id}:${c.id}`)) continue;
+            const oi = originIndex[pi];
+            const di = destinationIndex[ci];
+            let status: string;
+            let distance: number | null = null;
+            let duration: number | null = null;
+            if (oi === null) {
+              status = 'missing_origin';
+            } else if (di === null) {
+              status = 'missing_destination';
+            } else if (result === null) {
+              status = 'error';
+            } else {
+              const cell = cellByIdx.get(`${oi}:${di}`);
+              status = cell?.status ?? 'error';
+              distance = cell?.distanceMeters ?? null;
+              duration = cell?.durationSeconds ?? null;
+            }
+            insert.run(sessionId, p.id, c.id, mode, distance, duration, status, providerName);
+          }
+        }
+      });
+    }
 
     return this.listEstimates(sessionId);
   }

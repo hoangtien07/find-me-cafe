@@ -86,6 +86,8 @@ export const decisionExplanationTravelSchema = z.object({
   display_name: z.string(),
   duration_seconds: z.number().nullable(),
   status: z.string(),
+  /** The participant's effective mode (their own, else the session default). */
+  travel_mode: decisionTravelModeSchema.nullable(),
 });
 export type DecisionExplanationTravel = z.infer<typeof decisionExplanationTravelSchema>;
 
@@ -248,6 +250,8 @@ export const decisionParticipantSchema = z.object({
   max_travel_minutes: z.number().int().nullable(),
   budget_min: z.number().nullable(),
   budget_max: z.number().nullable(),
+  /** null = ride the session's default mode. */
+  travel_mode: decisionTravelModeSchema.nullable(),
   submitted_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -499,6 +503,8 @@ export const updateParticipantContextRequestSchema = z
     max_travel_minutes: z.number().int().min(1).max(600).nullish(),
     budget_min: z.number().min(0).nullish(),
     budget_max: z.number().min(0).nullish(),
+    /** Per-participant ride mode; absent/null keeps the session default. */
+    travel_mode: decisionTravelModeSchema.nullish(),
     preferences: z.array(decisionPreferenceInputSchema).max(3).optional(),
     deal_breakers: z.array(decisionDealBreakerInputSchema).optional(),
   })

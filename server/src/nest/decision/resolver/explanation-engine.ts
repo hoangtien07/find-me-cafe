@@ -27,6 +27,7 @@ export function explainCandidate(input: {
       display_name: participant.display_name,
       duration_seconds: est && est.status === 'ok' ? est.duration_seconds : null,
       status: est?.status ?? 'missing',
+      travel_mode: est?.travel_mode ?? null,
     };
   });
 
