@@ -131,15 +131,17 @@ export default function DecisionJoinPage() {
                         <button
                           type="button"
                           disabled={voting}
+                          aria-pressed={voted}
+                          aria-label={`Bình chọn ${snap?.name ?? 'quán này'}`}
                           onClick={() => handleVote(item.candidate_id)}
                           className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold ${voted ? 'bg-emerald-600 text-white' : 'bg-surface-hover text-content'}`}
                         >
-                          {voted ? '✓ Oyunuz' : 'Oy ver'}
+                          {voted ? '✓ Đã chọn' : 'Bình chọn'}
                         </button>
                       )}
                       {tally && (
-                        <span className="inline-flex items-center gap-1 text-xs text-content-faint">
-                          <Vote size={11} /> {tally.count}{tally.voter_names.length > 0 ? ` · ${tally.voter_names.join(', ')}` : ''}
+                        <span aria-live="polite" className="inline-flex items-center gap-1 text-xs text-content-faint">
+                          <Vote size={11} aria-hidden /> {tally.count} phiếu{tally.voter_names.length > 0 ? ` · ${tally.voter_names.join(', ')}` : ''}
                         </span>
                       )}
                     </div>
@@ -271,7 +273,7 @@ function ContextForm({
       <label className="mb-1 mt-3 block text-xs font-medium text-content-secondary">Tuyệt đối không đi loại quán nào? (không bắt buộc)</label>
       <input value={vetoCategory} onChange={e => setVetoCategory(e.target.value)} placeholder="ví dụ: bar" className="mb-4 w-full rounded-lg border border-edge bg-surface px-3 py-2 text-sm" />
 
-      {error && <p className="mb-2 text-sm text-red-500">{error}</p>}
+      {error && <p role="alert" className="mb-2 text-sm text-red-500">{error}</p>}
       <button
         type="button"
         disabled={submitting}

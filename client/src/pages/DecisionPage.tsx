@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { PageSpinner } from '../components/shared/Spinner'
-import { Copy, ExternalLink, MapPin, Navigation, Phone, Search, Star, UserCheck, Users, Vote, X } from 'lucide-react'
+import { Copy, ExternalLink, MapPin, Navigation, Phone, Search, Star, UserCheck, Users, Vote, WifiOff, X } from 'lucide-react'
 import { useDecisionPage } from './decision/useDecisionPage'
 import { MapViewAuto } from '../components/Map/MapViewAuto'
 import type { Poi } from '../components/Map/poiCategories'
@@ -43,6 +43,7 @@ export default function DecisionPage() {
     latestResult,
     selection,
     votes,
+    staleFromCache,
     isLoading,
     error,
     inviteLink,
@@ -84,7 +85,7 @@ export default function DecisionPage() {
         <header className="mb-6">
           <h1 className="text-2xl font-bold">{session.title ?? 'Chốt quán'}</h1>
           <div className="flex items-center gap-3 mt-2">
-            <span className="text-sm text-content-secondary">{STATUS_LABEL[session.status] ?? session.status}</span>
+            <span className="text-sm text-content-secondary" role="status" aria-live="polite">{STATUS_LABEL[session.status] ?? session.status}</span>
             <button
               type="button"
               onClick={handleInvite}
@@ -99,6 +100,15 @@ export default function DecisionPage() {
             </p>
           )}
         </header>
+
+        {staleFromCache && (
+          <div
+            role="status"
+            className="mb-4 flex items-center gap-2 rounded-lg border border-edge bg-surface-card px-3 py-2 text-sm text-content-secondary"
+          >
+            <WifiOff size={14} aria-hidden /> Đang offline — hiển thị dữ liệu đã lưu gần nhất.
+          </div>
+        )}
 
         <Roster participants={participants} />
         <CandidateSection
@@ -121,7 +131,7 @@ export default function DecisionPage() {
           onSaveContext={handleVenueContext}
         />
 
-        {error && <p className="my-3 text-sm text-red-500">{error}</p>}
+        {error && <p role="alert" className="my-3 text-sm text-red-500">{error}</p>}
 
         {resolvable && topItems.length === 0 && (
           <button
@@ -626,8 +636,8 @@ function RecommendationList({
                   {(() => {
                     const entry = votes?.votes.find(v => String(v.candidate_id) === String(item.candidate_id))
                     return entry ? (
-                      <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-content-secondary">
-                        <Vote size={11} /> {entry.count} oy{entry.voter_names.length > 0 ? ` · ${entry.voter_names.join(', ')}` : ''}
+                      <div aria-live="polite" className="mt-1 inline-flex items-center gap-1 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-content-secondary">
+                        <Vote size={11} aria-hidden /> {entry.count} phiếu{entry.voter_names.length > 0 ? ` · ${entry.voter_names.join(', ')}` : ''}
                       </div>
                     ) : null
                   })()}

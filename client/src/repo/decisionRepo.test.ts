@@ -76,6 +76,7 @@ const noVotes = () => HttpResponse.json({ votes: [], total: 0 })
 
 beforeEach(() => {
   useDecisionStore.getState().reset()
+  localStorage.removeItem('decision_room_2')
 })
 
 describe('decisionRepo.open', () => {
@@ -138,6 +139,32 @@ describe('decisionRepo.open', () => {
     expect(getCalls).toBe(2)
     const ids = useDecisionStore.getState().participants.map(p => Number(p.id))
     expect(ids).toEqual([1, 2])
+  })
+
+  it('FE-REPO-DEC-004 falls back to the cached snapshot when the network fails', async () => {
+    // M2-12 — the host's last-seen room survives a reload with no network.
+    localStorage.setItem(
+      'decision_room_2',
+      JSON.stringify({
+        decision: session({ status: 'selected' }),
+        participants: [rosterEntry(1)],
+        candidates: [candidate(5)],
+        latestResult: null,
+        selection: selection(),
+        votes: { votes: [{ candidate_id: 5, count: 2, voter_names: ['An', 'Bình'] }], total: 2 },
+        cached_at: '2026-09-24 09:30:00',
+      }),
+    )
+    server.use(http.get('/api/decisions/2', () => HttpResponse.error()))
+
+    const decision = await decisionRepo.open(2)
+
+    expect(decision.status).toBe('selected')
+    const s = useDecisionStore.getState()
+    expect(s.staleFromCache).toBe(true)
+    expect(s.selection?.candidate_id).toBe(5)
+    expect(s.votes?.total).toBe(2)
+    localStorage.removeItem('decision_room_2')
   })
 
   it('FE-REPO-DEC-003 replaces a stale selection with the server state', async () => {
