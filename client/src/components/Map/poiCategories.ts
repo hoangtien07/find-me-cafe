@@ -1,4 +1,4 @@
-import { Utensils, Coffee, Wine, BedDouble, Camera, Landmark, Trees, Ticket, Fuel, Zap, ParkingSquare, Tent, type LucideIcon } from 'lucide-react'
+import { Utensils, Coffee, Wine, BedDouble, Camera, Landmark, Trees, Ticket, Fuel, Zap, ParkingSquare, Tent, CircleUser, type LucideIcon } from 'lucide-react'
 // The road-trip kinds take their colour from the one place that defines it, so the
 // search result, the map pin and the road-trip rail cannot drift apart.
 import { SERVICE_COLORS } from '../Roadtrip/roadtripModel'
@@ -38,8 +38,16 @@ export const ROADTRIP_POI_CATEGORIES: PoiCategory[] = CORRIDOR_CATEGORIES.map(
   ({ key, labelKey, Icon, color }) => ({ key, labelKey, Icon, color }),
 )
 
+/**
+ * Categories only the group-decision map draws — a participant origin pin.
+ * Kept out of POI_CATEGORIES so the explore pill never offers it as a search.
+ */
+export const DECISION_POI_CATEGORIES: PoiCategory[] = [
+  { key: 'origin', labelKey: 'decision.map.origin', Icon: CircleUser, color: '#0EA5E9' },
+]
+
 export const POI_CATEGORY_BY_KEY: Record<string, PoiCategory> = Object.fromEntries(
-  [...POI_CATEGORIES, ...ROADTRIP_POI_CATEGORIES].map(c => [c.key, c]),
+  [...POI_CATEGORIES, ...ROADTRIP_POI_CATEGORIES, ...DECISION_POI_CATEGORIES].map(c => [c.key, c]),
 )
 
 // One POI result from /api/maps/pois (mirror of the server's OverpassPoi).

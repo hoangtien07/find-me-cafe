@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { PageSpinner } from '../components/shared/Spinner'
 import { Copy, ExternalLink, MapPin, Navigation, Phone, Search, Star, UserCheck, Users, X } from 'lucide-react'
 import { useDecisionPage } from './decision/useDecisionPage'
+import { MapViewAuto } from '../components/Map/MapViewAuto'
+import type { Poi } from '../components/Map/poiCategories'
 import type { VenuePick, VenueSuggestion } from '../repo/decisionPlaces'
 import type {
   DecisionCandidate,
@@ -133,6 +135,15 @@ export default function DecisionPage() {
             sessionStatus={session.status}
             onSelect={handleSelect}
             onFeedback={handleFeedback}
+          />
+        )}
+
+        {topItems.length > 0 && (
+          <DecisionMap
+            items={topItems}
+            selectedId={selectedId}
+            participants={participants}
+            tripId={session.trip_id}
           />
         )}
       </div>
@@ -530,5 +541,106 @@ function FeedbackForm({
         Gửi cảm nhận
       </button>
     </div>
+  )
+}
+
+/**
+ * M2-09 — the comparison map: participant origins as origin pins, the Top-3
+ * venues as numbered pins, the locked-in venue highlighted. The fairness view
+ * is the small candidate picker: origin tooltips relabel with every member's
+ * travel time to the chosen candidate, so the geometry explains who travels
+ * how far. Runs through MapViewAuto → both map renderers stay supported.
+ */
+function DecisionMap({
+  items,
+  selectedId,
+  participants,
+  tripId,
+}: {
+  items: RecommendationResult['items']
+  selectedId: number | null
+  participants: RosterEntry[]
+  tripId: number
+}) {
+  const [viewCandidateId, setViewCandidateId] = useState<number | null>(null)
+  const defaultCandidateId = selectedId ?? items[0]?.candidate_id ?? null
+  const viewItem = items.find(i => i.candidate_id === (viewCandidateId ?? defaultCandidateId)) ?? items[0]
+
+  const topPlaces = items.slice(0, 3).flatMap(item => {
+    const snap = item.candidate.snapshot
+    if (typeof snap?.lat !== 'number' || typeof snap?.lng !== 'number') return []
+    return [{ id: item.candidate.place_id, name: snap.name, lat: snap.lat, lng: snap.lng, image_url: snap.image_url ?? null }]
+  })
+  const orderMap = Object.fromEntries(
+    items.slice(0, 3).map(item => [item.candidate.place_id, item.rank == null ? null : [item.rank]]),
+  )
+  const selectedPlaceId = selectedId != null
+    ? items.find(i => i.candidate_id === selectedId)?.candidate.place_id ?? null
+    : null
+
+  const origins = participants.flatMap(p => {
+    if (typeof p.origin_lat !== 'number' || typeof p.origin_lng !== 'number') return []
+    const tt = viewItem?.explanation?.travel_times.find(t => t.participant_id === p.id)
+    const dur = tt && tt.status === 'ok' ? ` · ~${fmtMin(tt.duration_seconds)}` : ''
+    const poi: Poi = {
+      osm_id: `origin-${p.id}`,
+      name: `${p.display_name}${dur}`,
+      lat: p.origin_lat,
+      lng: p.origin_lng,
+      category: 'origin',
+      poi_type: 'origin',
+      address: 'origin_label' in p ? p.origin_label ?? null : null,
+      website: null,
+      phone: null,
+      opening_hours: null,
+      cuisine: null,
+      source: 'decision',
+    }
+    return [poi]
+  })
+
+  const focusPoints: [number, number][] = [
+    ...origins.map(o => [o.lat, o.lng] as [number, number]),
+    ...topPlaces.map(pl => [pl.lat, pl.lng] as [number, number]),
+  ]
+  if (focusPoints.length === 0) return null
+
+  return (
+    <section className="mb-6 rounded-xl border border-edge bg-surface-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <MapPin size={16} className="text-accent" /> Bản đồ so sánh
+        </h2>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-content-faint">Giờ đi tới:</span>
+          {items.slice(0, 3).map(item => {
+            const active = (viewCandidateId ?? defaultCandidateId) === item.candidate_id
+            return (
+              <button
+                key={item.candidate_id}
+                type="button"
+                onClick={() => setViewCandidateId(item.candidate_id)}
+                className={`rounded-full px-2 py-0.5 font-semibold ${active ? 'bg-accent text-accent-text' : 'bg-surface-hover text-content-secondary'}`}
+              >
+                #{item.rank ?? '—'}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="relative h-72 w-full overflow-hidden rounded-xl border border-edge">
+        <MapViewAuto
+          places={topPlaces}
+          dayOrderMap={orderMap}
+          selectedPlaceId={selectedPlaceId}
+          pois={origins}
+          focusPoints={focusPoints}
+          tripId={tripId}
+        />
+      </div>
+      <p className="mt-2 text-xs text-content-faint">
+        Ghim xanh dương = điểm xuất phát của từng người (tooltip ghi giờ đi tới quán đang xem); pin có số = Top 3 gợi ý.
+      </p>
+    </section>
   )
 }

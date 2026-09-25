@@ -220,6 +220,26 @@ describe('DecisionService', () => {
       expect(view.deal_breakers[0]!.value).toEqual({ category: 'bar' });
     });
 
+    it('listRoster carries origins and ride mode for the host comparison map', () => {
+      const { session, joined } = joinRoom();
+      svc.updateParticipantContext(joined.participant.id, session.id, {
+        origin: { lat: 10.77, lng: 106.7, label: 'Q1' },
+        travel_mode: 'cycling',
+        preferences: [],
+        deal_breakers: [],
+      });
+      const roster = svc.listRoster(session.id);
+      expect(roster).toEqual([
+        expect.objectContaining({
+          id: joined.participant.id,
+          origin_lat: 10.77,
+          origin_lng: 106.7,
+          origin_label: 'Q1',
+          travel_mode: 'cycling',
+        }),
+      ]);
+    });
+
     it('re-submitting context replaces the preference/deal-breaker sets', () => {
       const { session, joined } = joinRoom();
       svc.updateParticipantContext(joined.participant.id, session.id, {
