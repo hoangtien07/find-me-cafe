@@ -58,7 +58,7 @@ describe('DecisionResolverService', () => {
     joinWithOrigin(s.id, 'Bình', 10.78, 106.71, 60);
 
     const result = await resolver.resolve(s.id);
-    expect(result.run.strategy_version).toBe('resolver-v1');
+    expect(result.run.strategy_version).toBe('resolver-v2');
     expect(result.run.status).toBe('completed');
     expect(result.items).toHaveLength(3);
     expect(result.items[0]!.rank).toBe(1);
@@ -95,7 +95,7 @@ describe('DecisionResolverService', () => {
     const bar = result.items.find((i) => i.candidate.snapshot?.name === 'Bar X')!;
     const cafe = result.items.find((i) => i.candidate.snapshot?.name === 'Cafe Y')!;
     expect(bar.eligible).toBe(false);
-    expect(bar.constraint_result?.violations[0]?.type).toBe('veto_category');
+    expect(bar.constraint_result?.violations[0]?.type).toBe('explicit_veto');
     expect(cafe.eligible).toBe(true);
     expect(cafe.rank).toBe(1);
   });
@@ -112,8 +112,8 @@ describe('DecisionResolverService', () => {
     const item = result.items[0]!;
     expect(item.eligible).toBe(true); // no violations
     const types = item.constraint_result?.unknowns.map((u) => u.type) ?? [];
-    expect(types).toContain('max_travel');
-    expect(types).toContain('opening_hours'); // scheduled but no hours evidence
+    expect(types).toContain('no_route'); // no estimate → reachability unverifiable
+    expect(types).toContain('closed_at_decision_time'); // scheduled but no hours evidence
   });
 
   it('a participant over their hard travel cap marks the candidate ineligible', async () => {
@@ -123,7 +123,7 @@ describe('DecisionResolverService', () => {
 
     const result = await resolver.resolve(s.id);
     expect(result.items[0]!.eligible).toBe(false);
-    expect(result.items[0]!.constraint_result?.violations[0]?.type).toBe('max_travel');
+    expect(result.items[0]!.constraint_result?.violations[0]?.type).toBe('max_travel_exceeded');
   });
 
   it('re-resolving writes a new versioned run, never overwrites history', async () => {
@@ -224,7 +224,7 @@ describe('DecisionResolverService', () => {
     const s = decisions.create(1, { title: 'X' });
     const cand = decisions.addCandidate(s.id, addPlace(s.trip_id, 'Cafe', 10.775, 106.7), { type: 'host', id: 1 });
     const p = joinWithOrigin(s.id, 'An', 10.77, 106.69);
-    const run = await resolver.resolve(s.id);
+    await resolver.resolve(s.id);
     decisions.select(s.id, cand.id, 1);
     decisions.addFeedback(s.id, { candidate_id: cand.id, fit_score: 5, would_choose_again: true }, p.id);
 

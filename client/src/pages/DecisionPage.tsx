@@ -437,9 +437,7 @@ function RecommendationList({
                   </div>
                   <div className="text-sm text-accent">{item.explanation?.headline}</div>
                 </div>
-                <div className="text-right text-sm text-content-secondary">
-                  {(item.total_score * 100).toFixed(0)}%
-                </div>
+                {/* No visible % — internal strategy score stays off consumer UI (M2-06). */}
               </div>
 
               {item.explanation && (

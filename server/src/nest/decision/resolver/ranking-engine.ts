@@ -2,11 +2,13 @@ import type { DecisionCandidate, DecisionCandidateSnapshot } from '@trek/shared'
 import type { DimensionScores, ParticipantContext } from './resolver.types';
 
 /**
- * The resolver-v1 weighting — strategy data, not UI values (spec §14). Travel
+ * The resolver-v2 weighting — strategy data, not UI values (plan §14). Travel
  * dominates because a venue one person loves but can't reach fails the group.
+ * Stamped on every recommendation_run (strategy_version) and mixed into the
+ * input hash, so a weights bump produces different run ids honestly.
  */
-export const RESOLVER_V1_STRATEGY = 'resolver-v1';
-export const RESOLVER_V1_WEIGHTS = {
+export const RESOLVER_STRATEGY = 'resolver-v2';
+export const RESOLVER_V2_WEIGHTS = {
   place: 0.15,
   group: 0.25,
   travel: 0.3,
@@ -63,11 +65,11 @@ export function scoreCandidate(input: {
 
   const travelFairness = clamp01(fairnessScore);
   const totalScore =
-    RESOLVER_V1_WEIGHTS.place * placeFit +
-    RESOLVER_V1_WEIGHTS.group * groupFit +
-    RESOLVER_V1_WEIGHTS.travel * travelFairness +
-    RESOLVER_V1_WEIGHTS.context * contextFit +
-    RESOLVER_V1_WEIGHTS.trust * trustScore;
+    RESOLVER_V2_WEIGHTS.place * placeFit +
+    RESOLVER_V2_WEIGHTS.group * groupFit +
+    RESOLVER_V2_WEIGHTS.travel * travelFairness +
+    RESOLVER_V2_WEIGHTS.context * contextFit +
+    RESOLVER_V2_WEIGHTS.trust * trustScore;
 
   return { placeFit, groupFit, travelFairness, contextFit, trustScore, totalScore };
 }

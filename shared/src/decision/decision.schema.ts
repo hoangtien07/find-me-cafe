@@ -54,6 +54,8 @@ export type DecisionFairnessStrategy = z.infer<typeof decisionFairnessStrategySc
 
 /** The resolver implementation version stamped onto every run. */
 export const DECISION_RESOLVER_V1 = 'resolver-v1' as const;
+/** MVP2 resolver (M2-06): V2 hard constraints + fairness metrics. */
+export const DECISION_RESOLVER_V2 = 'resolver-v2' as const;
 
 // ── Structured payloads (stored as *_json columns, parsed on the wire) ─────
 
@@ -66,6 +68,12 @@ export const decisionConstraintFindingSchema = z.object({
   type: nonEmptyString,
   detail: z.string().optional(),
   participant_id: idSchema.nullish(),
+  /** V2: which candidate the finding concerns (one check family per row). */
+  candidate_id: idSchema.nullish(),
+  /** V2 verdict: 'fail' for violations, 'unknown' for unverifiable checks. */
+  result: z.enum(['pass', 'fail', 'unknown']).optional(),
+  /** V2 provenance: what evidence produced the finding. */
+  source: z.string().optional(),
 });
 export type DecisionConstraintFinding = z.infer<typeof decisionConstraintFindingSchema>;
 

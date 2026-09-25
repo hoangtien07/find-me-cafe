@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateConstraints, isOpenAt } from '../../../src/nest/decision/resolver/constraint-engine';
-import type { DecisionCandidate, DecisionSession } from '@trek/shared';
+import type { DecisionCandidate, DecisionSession, DecisionTravelEstimate } from '@trek/shared';
+import type { ParticipantContext } from '../../../src/nest/decision/resolver/resolver.types';
 
 /**
  * CLOSED_AT_DECISION_TIME (M2-07): a scheduled session reads the candidate's
@@ -53,7 +54,7 @@ describe('evaluateConstraints — scheduled session', () => {
       opening_periods: [{ open: { day: 1, hour: 7, minute: 0 }, close: { day: 1, hour: 22, minute: 0 } }],
     });
     const r = evaluateConstraints({ candidate: c, session, participants: [], estimateByParticipant: new Map() });
-    expect(r.violations.map((v) => v.type)).toContain('closed_at_time');
+    expect(r.violations.map((v) => v.type)).toContain('closed_at_decision_time');
     expect(r.eligible).toBe(false);
   });
 
@@ -77,7 +78,7 @@ describe('evaluateConstraints — scheduled session', () => {
     for (const c of [special, none]) {
       const r = evaluateConstraints({ candidate: c, session, participants: [], estimateByParticipant: new Map() });
       expect(r.violations).toHaveLength(0);
-      expect(r.unknowns.map((u) => u.type)).toContain('opening_hours');
+      expect(r.unknowns.map((u) => u.type)).toContain('closed_at_decision_time');
     }
   });
 
@@ -86,5 +87,75 @@ describe('evaluateConstraints — scheduled session', () => {
     const c = candidateWith({ name: 'X' });
     const r = evaluateConstraints({ candidate: c, session: unscheduled, participants: [], estimateByParticipant: new Map() });
     expect(r.unknowns).toHaveLength(0);
+  });
+});
+
+/**
+ * V2 families (M2-06): NO_ROUTE, MANDATORY_ATTRIBUTE_MISSING, and the finding
+ * shape itself — candidate_id / result / source on every row.
+ */
+describe('evaluateConstraints — V2 families', () => {
+  const session = { id: 1, trip_id: 1, scheduled_at: null } as unknown as DecisionSession;
+  const candidateWith = (snapshot: Partial<NonNullable<DecisionCandidate['snapshot']>> | null): DecisionCandidate =>
+    ({ id: 7, place_id: 1, snapshot } as unknown as DecisionCandidate);
+  const participant = (over: Record<string, unknown> = {}) =>
+    ({ id: 9, display_name: 'An', max_travel_minutes: null, budget_max: null, ...over }) as unknown as ParticipantContext['participant'];
+  const est = (status: string, duration = 600): DecisionTravelEstimate =>
+    ({ status, duration_seconds: duration, travel_mode: 'driving' }) as unknown as DecisionTravelEstimate;
+  const ctx = (p: ParticipantContext['participant'], preferences: ParticipantContext['preferences'] = [], dealBreakers: ParticipantContext['dealBreakers'] = []): ParticipantContext =>
+    ({ participant: p, preferences, dealBreakers });
+
+  it('a no_route cell fails hard even without a travel cap', () => {
+    const p = participant();
+    const r = evaluateConstraints({
+      candidate: candidateWith({ name: 'X' }),
+      session,
+      participants: [ctx(p)],
+      estimateByParticipant: new Map([[9, est('no_route')]]),
+    });
+    expect(r.violations[0]).toMatchObject({ type: 'no_route', participant_id: 9, candidate_id: 7, result: 'fail', source: 'matrix' });
+    expect(r.eligible).toBe(false);
+  });
+
+  it('a missing/error cell is UNKNOWN no_route, not a violation', () => {
+    const p = participant();
+    for (const cell of [null, est('error', 0)]) {
+      const r = evaluateConstraints({
+        candidate: candidateWith({ name: 'X' }),
+        session,
+        participants: [ctx(p)],
+        estimateByParticipant: new Map([[9, cell]]),
+      });
+      expect(r.violations).toHaveLength(0);
+      expect(r.unknowns[0]).toMatchObject({ type: 'no_route', result: 'unknown', source: 'matrix' });
+    }
+  });
+
+  it('a hard must-have the venue provably lacks fails; unverifiable stays UNKNOWN', () => {
+    const p = participant();
+    const mustWifi = [{ is_hard: true, key: 'wifi', value: 'wifi', weight: 1 }] as unknown as ParticipantContext['preferences'];
+    const lacking = evaluateConstraints({
+      candidate: candidateWith({ name: 'X', facts: { internet_access: 'no' } }),
+      session,
+      participants: [ctx(p, mustWifi)],
+      estimateByParticipant: new Map([[9, est('ok')]]),
+    });
+    expect(lacking.violations[0]).toMatchObject({ type: 'mandatory_attribute_missing', result: 'fail' });
+    const unverifiable = evaluateConstraints({
+      candidate: candidateWith({ name: 'X', facts: {} }),
+      session,
+      participants: [ctx(p, mustWifi)],
+      estimateByParticipant: new Map([[9, est('ok')]]),
+    });
+    expect(unverifiable.violations).toHaveLength(0);
+    expect(unverifiable.unknowns[0]?.type).toBe('mandatory_attribute_missing');
+    const satisfied = evaluateConstraints({
+      candidate: candidateWith({ name: 'X', facts: { internet_access: 'wlan' } }),
+      session,
+      participants: [ctx(p, mustWifi)],
+      estimateByParticipant: new Map([[9, est('ok')]]),
+    });
+    expect(satisfied.eligible).toBe(true);
+    expect(satisfied.unknowns).toHaveLength(0);
   });
 });

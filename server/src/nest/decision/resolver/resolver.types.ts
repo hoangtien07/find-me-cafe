@@ -29,6 +29,9 @@ export interface ConstraintFinding {
   type: string;
   detail: string;
   participant_id?: number;
+  candidate_id?: number;
+  result?: 'pass' | 'fail' | 'unknown';
+  source?: string;
 }
 
 /** The five soft dimensions of spec §14, each normalized to [0, 1]. */

@@ -1,13 +1,14 @@
 import type { ParticipantContext } from './resolver.types';
 import type { DecisionTravelEstimate } from '@trek/shared';
 
-/** The metrics spec §15 mandates at minimum. */
+/** The metrics plan §16 mandates: mean/max/min/range/variance/p50 + violations. */
 export interface FairnessMetrics {
   mean: number;
   max: number;
   min: number;
   range: number;
   variance: number;
+  p50: number;
   limitViolationCount: number;
 }
 
@@ -50,12 +51,12 @@ export function computeFairness(input: {
   const min = Math.min(...durations);
   const range = max - min;
   const variance = durations.reduce((acc, d) => acc + (d - mean) ** 2, 0) / n;
-  const metrics: FairnessMetrics = { mean, max, min, range, variance, limitViolationCount };
+  const sorted = [...durations].sort((a, b) => a - b);
+  const median = sorted[Math.floor(n / 2)]!; // p50
+  const metrics: FairnessMetrics = { mean, max, min, range, variance, p50: median, limitViolationCount };
 
   const NORM_SEC = 45 * 60;
   const base = Math.max(0, 1 - mean / NORM_SEC); // group-average term
-  const sorted = [...durations].sort((a, b) => a - b);
-  const median = sorted[Math.floor(n / 2)]!;
   const sacrifice = Math.max(0, (max - median) / NORM_SEC); // one person left far out
   const inequality = Math.min(1, Math.sqrt(variance) / NORM_SEC);
   const limitPenalty = Math.min(1, limitViolationCount * 0.5);
