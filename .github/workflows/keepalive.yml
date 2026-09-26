@@ -13,4 +13,6 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -fsS --retry 2 --max-time 30 https://find-me-cafe.onrender.com/api/health
+      # Render free wake takes ~50s: each attempt gets 120s and curl retries
+      # through the wake window (502/503/504 and timeouts are retried with -f).
+      - run: curl -fsS --retry 3 --retry-delay 15 --retry-max-time 300 --max-time 120 https://find-me-cafe.onrender.com/api/health
