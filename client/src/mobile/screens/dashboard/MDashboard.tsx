@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
-  Archive, ArchiveRestore, ArrowRight, Bell, CalendarDays, CalendarPlus, Copy,
+  Archive, ArchiveRestore, ArrowRight, Bell, CalendarDays, CalendarPlus, Coffee, Copy,
   LayoutGrid, List, MapPin, Pencil, Plus, RefreshCw, Trash2, Users,
 } from 'lucide-react'
 import { useTranslation } from '../../../i18n'
@@ -153,6 +153,11 @@ export default function MDashboard(): React.ReactElement {
           </div>
           <MIconBtn ariaLabel={t('dashboard.subscribeAllTrips')} size={36} className="ml-auto" onClick={() => setSubOpen(true)}>
             <CalendarPlus size={15} strokeWidth={2} className="text-m-muted" />
+          </MIconBtn>
+          {/* "Chốt quán" — group-decision room entry, mirrors the desktop
+              DashboardPage coffee button (route is /decision/new on all shells). */}
+          <MIconBtn ariaLabel="Chốt quán" size={36} onClick={() => navigate('/decision/new')}>
+            <Coffee size={15} strokeWidth={2} className="text-m-muted" />
           </MIconBtn>
           <button
             type="button"
