@@ -114,21 +114,34 @@ describe('OsrmTableMatrixProvider', () => {
 });
 
 describe('VietmapMatrixProvider', () => {
-  it('GETs /api/matrix/v4 with the key, lat-first points, index lists and vehicle=motorcycle', async () => {
+  it('GETs /api/matrix/v4 with the key, lat-first points, index lists and vehicle=<profile>', async () => {
+    const seen: { urls: string[] } = { urls: [] };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      seen.urls.push(url);
+      return new Response(JSON.stringify({ code: 'OK', durations: [[120]], distances: [[1500]] }), { status: 200 });
+    }));
+    const p = new VietmapMatrixProvider('KEY', 'https://vietmap.test');
+    await p.compute({ origins: [origins[0]!], destinations, mode: 'driving' });
+    const u = new URL(seen.urls[0] ?? '');
+    expect(`${u.origin}${u.pathname}`).toBe('https://vietmap.test/api/matrix/v4');
+    expect(u.searchParams.get('apikey')).toBe('KEY');
+    expect(u.searchParams.getAll('point')).toEqual(['10.77,106.7', '10.79,106.69']);
+    // The "Ô tô" chip is car travel — VietMap profiles it natively.
+    expect(u.searchParams.get('vehicle')).toBe('car');
+    expect(u.searchParams.get('sources')).toBe('0');
+    expect(u.searchParams.get('destinations')).toBe('1');
+  });
+
+  it('the "Xe máy" chip (cycling bucket) rides the motorcycle profile', async () => {
     const seen: { url?: string } = {};
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       seen.url = url;
       return new Response(JSON.stringify({ code: 'OK', durations: [[120]], distances: [[1500]] }), { status: 200 });
     }));
     const p = new VietmapMatrixProvider('KEY', 'https://vietmap.test');
-    await p.compute({ origins: [origins[0]!], destinations, mode: 'driving' });
-    const u = new URL(seen.url ?? '');
-    expect(`${u.origin}${u.pathname}`).toBe('https://vietmap.test/api/matrix/v4');
-    expect(u.searchParams.get('apikey')).toBe('KEY');
-    expect(u.searchParams.getAll('point')).toEqual(['10.77,106.7', '10.79,106.69']);
-    expect(u.searchParams.get('vehicle')).toBe('motorcycle');
-    expect(u.searchParams.get('sources')).toBe('0');
-    expect(u.searchParams.get('destinations')).toBe('1');
+    const { cells } = await p.compute({ origins: [origins[0]!], destinations, mode: 'cycling' });
+    expect(new URL(seen.url ?? '').searchParams.get('vehicle')).toBe('motorcycle');
+    expect(cells[0]).toMatchObject({ status: 'ok' });
   });
 
   it('maps OK cells to ok with parsed duration/distance; null becomes no_route', async () => {
@@ -151,7 +164,6 @@ describe('VietmapMatrixProvider', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 403 })));
     await expect(p.compute(input())).rejects.toThrow(/403/);
     await expect(p.compute(input('walking'))).rejects.toThrow(/no profile/);
-    await expect(p.compute(input('cycling'))).rejects.toThrow(/no profile/);
     await expect(p.compute(input('transit'))).rejects.toThrow(/no profile/);
   });
 });
