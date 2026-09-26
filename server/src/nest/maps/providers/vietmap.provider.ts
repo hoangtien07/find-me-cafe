@@ -97,16 +97,29 @@ function vietmapText(value: unknown): string {
 
 /**
  * The full address a place detail splits into parts: `display` when present,
- * else street + ward + district + city composed. VIETMAP's `address` field on
- * place/v3 is frequently empty while `display` carries the whole line.
+ * then the flat `address` field, then street + ward + district + city
+ * composed. `display` carries the whole line when it exists, but some rows
+ * only populate `address`.
  */
 function vietmapAddress(detail: VietmapPlaceDetail): string {
   const display = vietmapText(detail.display);
   if (display) return display;
+  const address = vietmapText(detail.address);
+  if (address) return address;
   const street = [vietmapText(detail.hs_num), vietmapText(detail.street)].filter(Boolean).join(' ');
   return [street, vietmapText(detail.ward), vietmapText(detail.district), vietmapText(detail.city)]
     .filter(Boolean)
     .join(', ');
+}
+
+/** Boundary shape check: a non-object row carries no ref_id or coordinates. */
+function isVietmapEntry(value: unknown): value is VietmapEntry {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Boundary coercion: a coordinate that isn't a finite number isn't a coordinate. */
+function vietmapNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 export class VietmapPlacesProvider implements PlacesProvider {
@@ -161,11 +174,11 @@ export class VietmapPlacesProvider implements PlacesProvider {
 
   private toPlace(entry: VietmapEntry, detail?: VietmapPlaceDetail | null): ProviderPlace {
     return {
-      vietmap_ref_id: entry.ref_id ? `${VIETMAP_PLACE_ID_PREFIX}${entry.ref_id}` : null,
+      vietmap_ref_id: vietmapText(entry.ref_id) ? `${VIETMAP_PLACE_ID_PREFIX}${vietmapText(entry.ref_id)}` : null,
       name: vietmapText(detail?.name) || vietmapText(entry.name),
       address: detail ? vietmapAddress(detail) : vietmapText(entry.address),
-      lat: detail?.lat ?? entry.lat ?? null,
-      lng: detail?.lng ?? entry.lng ?? null,
+      lat: (detail ? vietmapNumber(detail.lat) : null) ?? vietmapNumber(entry.lat),
+      lng: (detail ? vietmapNumber(detail.lng) : null) ?? vietmapNumber(entry.lng),
       rating: null,
       rating_count: null,
       website: null,
@@ -193,7 +206,7 @@ export class VietmapPlacesProvider implements PlacesProvider {
       }
     }
     const entries = await this.call<VietmapEntry[]>('/api/search/v3', params, 'search/v3');
-    const list = Array.isArray(entries) ? entries : [];
+    const list = (Array.isArray(entries) ? entries : []).filter(isVietmapEntry);
 
     // One place/v3 per row for coordinates — bounded to the first handful; a
     // row whose lookup fails still ships with its display fields and a null
@@ -201,8 +214,8 @@ export class VietmapPlacesProvider implements PlacesProvider {
     const heads = list.slice(0, SEARCH_COORD_LOOKUPS);
     const details = await Promise.all(
       heads.map((e) =>
-        e.ref_id
-          ? this.call<VietmapPlaceDetail>('/api/place/v3', { refid: e.ref_id }, 'place/v3').catch(() => null)
+        vietmapText(e.ref_id)
+          ? this.call<VietmapPlaceDetail>('/api/place/v3', { refid: vietmapText(e.ref_id) }, 'place/v3').catch(() => null)
           : Promise.resolve(null),
       ),
     );
@@ -223,6 +236,7 @@ export class VietmapPlacesProvider implements PlacesProvider {
     }
     const entries = await this.call<VietmapEntry[]>('/api/autocomplete/v3', params, 'autocomplete/v3');
     return (Array.isArray(entries) ? entries : [])
+      .filter(isVietmapEntry)
       .filter((e) => vietmapText(e.ref_id))
       .slice(0, 5)
       .map((e) => ({
@@ -236,7 +250,7 @@ export class VietmapPlacesProvider implements PlacesProvider {
     const refId = vietmapRefId(placeId);
     if (!refId) return null;
     const detail = await this.call<VietmapPlaceDetail>('/api/place/v3', { refid: refId }, `place/v3(${refId})`);
-    if (!detail || typeof detail !== 'object') return null;
+    if (!isVietmapEntry(detail) || Array.isArray(detail)) return null;
     return { ...this.toPlace({ ref_id: refId }, detail), cached_at: Date.now() };
   }
 
@@ -253,7 +267,7 @@ export class VietmapPlacesProvider implements PlacesProvider {
       'reverse/v3',
     );
     const first = Array.isArray(entries) ? entries[0] : undefined;
-    if (!first) return null;
+    if (!first || !isVietmapEntry(first)) return null;
     return { name: vietmapText(first.name) || null, address: vietmapText(first.address) || vietmapText(first.display) || null };
   }
 }

@@ -2703,9 +2703,9 @@ export class MapsService {
     // and the editorial summary are Google's to add. Answering `expand=1` with a
     // null while `expand=0` answers in full would make the richer request the
     // poorer one. An Amap id has no richer tier either, so it takes the plain
-    // lookup as well.
+    // lookup as well. VIETMAP ids take the same plain lookup — no richer tier.
     if (!isGooglePlaceId(placeId)) {
-      return OSM_PLACE_ID.test(placeId) || placeId.startsWith('gers:') || isAmapPlaceId(placeId)
+      return OSM_PLACE_ID.test(placeId) || placeId.startsWith('gers:') || isAmapPlaceId(placeId) || isVietmapPlaceId(placeId)
         ? this.getPlaceDetails(userId, placeId, lang)
         : { place: null };
     }
