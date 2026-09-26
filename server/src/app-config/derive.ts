@@ -336,7 +336,7 @@ export function deriveNet(raw: RawEnv) {
 
 export function deriveDecision(raw: RawEnv) {
   return {
-    /** Raw DECISION_MATRIX_PROVIDER — 'mock' | 'google' | 'osrm' | 'vietmap'; the select validates/fails closed at the call site. */
+    /** Raw DECISION_MATRIX_PROVIDER — 'mock' | 'google' | 'osrm' | 'vietmap' | 'trackasia'; the select validates/fails closed at the call site. */
     matrixProvider: raw.DECISION_MATRIX_PROVIDER,
     matrixTimeoutMs: raw.DECISION_MATRIX_TIMEOUT_MS,
     googleRoutesApiKey: raw.GOOGLE_ROUTES_API_KEY,
@@ -344,6 +344,8 @@ export function deriveDecision(raw: RawEnv) {
     osrmMatrixApiBase: raw.OSRM_MATRIX_API_BASE,
     vietmapApiKey: raw.VIETMAP_API_KEY,
     vietmapApiBase: raw.VIETMAP_API_BASE,
+    trackasiaApiKey: raw.TRACKASIA_API_KEY,
+    trackasiaApiBase: raw.TRACKASIA_API_BASE,
   };
 }
 
