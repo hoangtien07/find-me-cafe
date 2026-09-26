@@ -8,13 +8,13 @@ secret nào trong file này — key chỉ đi qua env / secret store.
 | `DECISION_MATRIX_PROVIDER` | Dùng khi | Cần gì | Mode xe máy |
 |---|---|---|---|
 | `mock` (default) | dev/test | — | haversine × 1.3 |
-| `vietmap` | **production VN** | `VIETMAP_API_KEY` | `driving` → `motorcycle` (native) |
+| `vietmap` | **production VN** | `VIETMAP_API_KEY` | `cycling` ("Xe máy") → `motorcycle`; `driving` ("Ô tô") → `car` |
 | `google` | fallback khi có Google key | `GOOGLE_ROUTES_API_KEY` | `driving` → `TWO_WHEELER` |
 | `osrm` | self-host / không trả phí | `OSRM_MATRIX_API_BASE` | profile `driving` (ô tô — xấp xỉ) |
 
 VietMap được chọn cho VN: data bản địa, profile `motorcycle` thật (xe máy là
 phương tiện chính), rẻ hơn Google. Lưu ý: VIETMAP chỉ có profile
-`car|motorcycle|truck|container` — participant chọn `walking`/`cycling`/`transit`
+`car|motorcycle|truck|container` — participant chọn `walking`/`transit`
 sẽ nhận cell `error` (resolver đọc UNKNOWN≠PASS, không fake số).
 
 ```env

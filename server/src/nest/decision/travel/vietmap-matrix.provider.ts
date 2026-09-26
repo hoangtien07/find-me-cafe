@@ -14,14 +14,16 @@ const MAX_ELEMENTS = 900;
 
 /**
  * VIETMAP vehicle profiles are `car|motorcycle|truck|container` only. The
- * product's `driving` bucket is motorbike travel for the VN market (same
- * convention as the Google adapter's TWO_WHEELER); the remaining modes have
- * no honest profile, so they fail the call instead of serving motorcycle
- * numbers for a walker — cells end up 'error', which the resolver reads as
- * UNKNOWN≠PASS rather than a pass.
+ * product buckets map onto the VN-labelled chips: `cycling` is "Xe máy"
+ * (motorbike — the dominant VN mode) → `motorcycle`; `driving` is "Ô tô" →
+ * `car`, which VietMap profiles natively. `walking`/`transit` have no honest
+ * profile, so they fail the call instead of serving motorcycle numbers for a
+ * walker — cells end up 'error', which the resolver reads as UNKNOWN≠PASS
+ * rather than a pass.
  */
 const PROFILE_MAP: Partial<Record<DecisionTravelMode, string>> = {
-  driving: 'motorcycle',
+  driving: 'car',
+  cycling: 'motorcycle',
 };
 
 const asObject = (v: unknown): Record<string, unknown> | null =>
@@ -31,7 +33,7 @@ const asObject = (v: unknown): Record<string, unknown> | null =>
  * Real matrix adapter — VIETMAP Matrix v4 (docs:
  * https://maps.vietmap.vn/docs/map-api/matrix-version/matrix-v4/). One GET
  * with all points (`point=lat,lng` — latitude first), index lists for
- * sources/destinations, `vehicle=motorcycle`, `annotation=duration,distance`;
+ * sources/destinations, `vehicle=<profile>`, `annotation=duration,distance`;
  * the response mirrors OSRM's shape (`durations`/`distances` matrices plus a
  * `code` status — 'OK' on success, INVALID_REQUEST / OVER_DAILY_LIMIT /
  * MAX_POINTS_EXCEED / ERROR_UNKNOWN otherwise).
