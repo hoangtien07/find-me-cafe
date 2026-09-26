@@ -1,0 +1,27 @@
+# Render Blueprint — all-in-one deploy for TREK (find-me-cafe)
+# Free plan web service; Dockerfile auto-detected at repo root.
+# NOTE: free instances have an ephemeral filesystem and sleep when idle —
+# SQLite data under /app/data resets on restart/redeploy. Fine for demos.
+services:
+  - type: web
+    name: find-me-cafe
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: FORCE_HTTPS
+        value: "true"
+      - key: APP_URL
+        sync: false # set to the service's https://<name>.onrender.com URL
+      - key: ALLOWED_ORIGINS
+        sync: false # same value
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DECISION_MATRIX_PROVIDER
+        value: vietmap
+      - key: VIETMAP_API_KEY
+        sync: false
