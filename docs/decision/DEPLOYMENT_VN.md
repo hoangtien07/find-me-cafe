@@ -8,20 +8,27 @@ secret nào trong file này — key chỉ đi qua env / secret store.
 | `DECISION_MATRIX_PROVIDER` | Dùng khi | Cần gì | Mode xe máy |
 |---|---|---|---|
 | `mock` (default) | dev/test | — | haversine × 1.3 |
-| `vietmap` | **production VN** | `VIETMAP_API_KEY` | `cycling` ("Xe máy") → `motorcycle`; `driving` ("Ô tô") → `car` |
+| `vietmap` | production VN | `VIETMAP_API_KEY` | `cycling` ("Xe máy") → `motorcycle`; `driving` ("Ô tô") → `car` |
+| `trackasia` | **production VN (khuyến nghị)** | `TRACKASIA_API_KEY` | `cycling` → `moto`; `driving` → `car`; `walking` ("Đi bộ") → `walk` |
 | `google` | fallback khi có Google key | `GOOGLE_ROUTES_API_KEY` | `driving` → `TWO_WHEELER` |
 | `osrm` | self-host / không trả phí | `OSRM_MATRIX_API_BASE` | profile `driving` (ô tô — xấp xỉ) |
 
-VietMap được chọn cho VN: data bản địa, profile `motorcycle` thật (xe máy là
-phương tiện chính), rẻ hơn Google. Lưu ý: VIETMAP chỉ có profile
-`car|motorcycle|truck|container` — participant chọn `walking`/`transit`
-sẽ nhận cell `error` (resolver đọc UNKNOWN≠PASS, không fake số).
+TrackAsia được khuyến nghị cho VN: data bản địa, OSRM-shaped, billing theo
+request (không nhân theo số cell như VietMap — rẻ hơn ~15x cho ma trận
+nhóm), và là provider VN duy nhất có profile `walk` → chip "Đi bộ" nhận
+ETA thật. `transit` vẫn trả cell `error` (UNKNOWN≠PASS, không fake số).
+VietMap vẫn hỗ trợ như fallback; lưu ý VIETMAP chỉ có profile
+`car|motorcycle|truck|container` — `walking`/`transit` sẽ nhận cell `error`.
 
 ```env
-DECISION_MATRIX_PROVIDER=vietmap
-VIETMAP_API_KEY=<key từ vietmap.vn — loại "API key (search, route...)">
-# VIETMAP_API_BASE=https://maps.vietmap.vn   # chỉ đổi khi qua proxy/gateway
+DECISION_MATRIX_PROVIDER=trackasia
+TRACKASIA_API_KEY=<key từ account.track-asia.com>
+# TRACKASIA_API_BASE=https://maps.track-asia.com   # chỉ đổi khi qua proxy/gateway
 # DECISION_MATRIX_TIMEOUT_MS=10000
+
+# Fallback:
+# DECISION_MATRIX_PROVIDER=vietmap
+# VIETMAP_API_KEY=<key từ vietmap.vn — loại "API key (search, route...)">
 ```
 
 Key KHÔNG commit vào repo — đưa qua env của deployment hoặc secret store
@@ -85,7 +92,7 @@ default 3000). Healthcheck sẵn: `GET /api/health`.
 | `TRUST_PROXY` | `1` | cần khi chạy sau TLS proxy của Railway |
 | `FORCE_HTTPS` | `true` | HTTPS redirect + secure cookies |
 | `ADMIN_PASSWORD` | `<tự đặt>` | mật khẩu admin lần đầu |
-| `DECISION_MATRIX_PROVIDER` | `vietmap` | ETA xe máy cho VN |
+| `DECISION_MATRIX_PROVIDER` | `trackasia` | ETA xe máy + đi bộ cho VN |
 | `VIETMAP_API_KEY` | `<key từ vietmap.vn>` | gõ "API key (search, route...)" — dùng chung cho matrix + place search + geocode |
 | `places_provider` | `vietmap` | admin setting (không phải env) — search/geocode qua VietMap |
 | `PORT` | — | Railway inject, không set tay |

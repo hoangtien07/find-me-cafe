@@ -4,6 +4,7 @@ import { MockTravelMatrixProvider } from './mock-travel-matrix.provider';
 import { GoogleRoutesMatrixProvider } from './google-routes.provider';
 import { OsrmTableMatrixProvider } from './osrm-table.provider';
 import { VietmapMatrixProvider } from './vietmap-matrix.provider';
+import { TrackasiaMatrixProvider } from './trackasia-matrix.provider';
 
 const DEFAULT_MATRIX_TIMEOUT_MS = 10_000;
 
@@ -14,7 +15,7 @@ function parseTimeoutMs(v: string | undefined): number {
 
 /**
  * Picks the TravelMatrixProvider for this deployment from
- * `DECISION_MATRIX_PROVIDER` ('mock' | 'google' | 'osrm' | 'vietmap', default 'mock').
+ * `DECISION_MATRIX_PROVIDER` ('mock' | 'google' | 'osrm' | 'vietmap' | 'trackasia', default 'mock').
  *
  * Fail closed: selecting a real provider without its configuration throws at
  * boot — never a silent fall back to fixture data while pretending the matrix
@@ -42,7 +43,14 @@ export function selectMatrixProvider(env: ReturnType<typeof deriveDecision>): Tr
       }
       return new VietmapMatrixProvider(key, env.vietmapApiBase?.trim() || undefined, timeoutMs);
     }
+    case 'trackasia': {
+      const key = env.trackasiaApiKey?.trim();
+      if (!key) {
+        throw new Error('DECISION_MATRIX_PROVIDER=trackasia requires TRACKASIA_API_KEY');
+      }
+      return new TrackasiaMatrixProvider(key, env.trackasiaApiBase?.trim() || undefined, timeoutMs);
+    }
     default:
-      throw new Error(`unknown DECISION_MATRIX_PROVIDER '${name}' (mock|google|osrm|vietmap)`);
+      throw new Error(`unknown DECISION_MATRIX_PROVIDER '${name}' (mock|google|osrm|vietmap|trackasia)`);
   }
 }

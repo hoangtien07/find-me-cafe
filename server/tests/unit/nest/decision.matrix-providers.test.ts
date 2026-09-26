@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { GoogleRoutesMatrixProvider } from '../../../src/nest/decision/travel/google-routes.provider';
 import { OsrmTableMatrixProvider } from '../../../src/nest/decision/travel/osrm-table.provider';
 import { VietmapMatrixProvider } from '../../../src/nest/decision/travel/vietmap-matrix.provider';
+import { TrackasiaMatrixProvider } from '../../../src/nest/decision/travel/trackasia-matrix.provider';
 import { MockTravelMatrixProvider } from '../../../src/nest/decision/travel/mock-travel-matrix.provider';
 import { deriveDecision } from '../../../src/app-config/derive';
 import { selectMatrixProvider } from '../../../src/nest/decision/travel/matrix-provider-select';
@@ -168,6 +169,60 @@ describe('VietmapMatrixProvider', () => {
   });
 });
 
+describe('TrackasiaMatrixProvider', () => {
+  it('GETs /distance-matrix/v1/<profile>/<coords> with key + OSRM-style index lists', async () => {
+    const seen: { url?: string } = {};
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      seen.url = url;
+      return new Response(JSON.stringify({ code: 'Ok', durations: [[0, 480]], distances: [[0, 3200]] }), { status: 200 });
+    }));
+    const p = new TrackasiaMatrixProvider('TAKEY', 'https://trackasia.test');
+    const { cells, provider } = await p.compute(input('driving'));
+    expect(provider).toBe('trackasia');
+    const u = new URL(seen.url ?? '');
+    expect(`${u.origin}${u.pathname}`).toBe('https://trackasia.test/distance-matrix/v1/car/106.7,10.77;106.68,10.78;106.69,10.79');
+    expect(u.searchParams.get('key')).toBe('TAKEY');
+    expect(u.searchParams.get('sources')).toBe('0;1');
+    expect(u.searchParams.get('destinations')).toBe('2');
+    expect(u.searchParams.get('annotations')).toBe('duration,distance');
+    expect(cells).toHaveLength(2);
+  });
+
+  it('the VN chips map honestly: "Xe máy" (cycling) → moto, "Đi bộ" (walking) → walk', async () => {
+    const seen: { urls: string[] } = { urls: [] };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      seen.urls.push(url);
+      return new Response(JSON.stringify({ code: 'Ok', durations: [[300]], distances: [[1200]] }), { status: 200 });
+    }));
+    const p = new TrackasiaMatrixProvider('K');
+    await p.compute({ origins: [origins[0]!], destinations, mode: 'cycling' });
+    await p.compute({ origins: [origins[0]!], destinations, mode: 'walking' });
+    expect(seen.urls[0]).toContain('/distance-matrix/v1/moto/');
+    expect(seen.urls[1]).toContain('/distance-matrix/v1/walk/');
+  });
+
+  it('non-Ok codes, non-200s and the profile-less transit bucket fail the call', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ code: 'Error' }), { status: 200 }),
+    ));
+    const p = new TrackasiaMatrixProvider('K');
+    await expect(p.compute(input())).rejects.toThrow(/unexpected response/);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('denied', { status: 403 })));
+    await expect(p.compute(input())).rejects.toThrow(/403/);
+    await expect(p.compute(input('transit'))).rejects.toThrow(/no profile/);
+  });
+
+  it('null cells become no_route; real numbers round to integers', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ code: 'Ok', durations: [[805.3, null]], distances: [[5901.7, null]] }), { status: 200 }),
+    ));
+    const p = new TrackasiaMatrixProvider('K');
+    const { cells } = await p.compute({ origins: [origins[0]!], destinations: [...destinations, destinations[0]!], mode: 'cycling' });
+    expect(cells[0]).toMatchObject({ status: 'ok', durationSeconds: 805, distanceMeters: 5902 });
+    expect(cells[1]).toMatchObject({ status: 'no_route', durationSeconds: null, distanceMeters: null });
+  });
+});
+
 describe('selectMatrixProvider', () => {
   it('mock is the default and stays explicitly selectable', () => {
     expect(selectMatrixProvider(deriveDecision({}))).toBeInstanceOf(MockTravelMatrixProvider);
@@ -199,5 +254,14 @@ describe('selectMatrixProvider', () => {
     expect(
       selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'vietmap', VIETMAP_API_KEY: 'k' })),
     ).toBeInstanceOf(VietmapMatrixProvider);
+  });
+
+  it('trackasia requires its key — never a silent mock fallback', () => {
+    expect(() => selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'trackasia' }))).toThrow(
+      /TRACKASIA_API_KEY/,
+    );
+    expect(
+      selectMatrixProvider(deriveDecision({ DECISION_MATRIX_PROVIDER: 'trackasia', TRACKASIA_API_KEY: 'k' })),
+    ).toBeInstanceOf(TrackasiaMatrixProvider);
   });
 });
