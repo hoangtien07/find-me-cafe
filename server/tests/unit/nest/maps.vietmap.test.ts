@@ -219,6 +219,33 @@ describe('VietmapPlacesProvider.searchText', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ error: 'weird' }) }));
     await expect(provider().searchText('x')).resolves.toEqual([]);
   });
+
+  it('VMAP-025: malformed rows are dropped, never read, never looked up', async () => {
+    // A poisoned upstream array (null, a string, a number) must not reach
+    // `.ref_id` reads or spawn place/v3 calls — boundary validation lives here.
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, headers: { get: () => null }, json: async () => [null, 'junk', 42, { ref_id: 'vmg:POI:1', name: 'Cà Phê Vợt' }] })
+      .mockResolvedValueOnce({ ok: true, status: 200, headers: { get: () => null }, json: async () => DETAIL });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const places = await provider().searchText('quán');
+    expect(places).toHaveLength(1);
+    expect(places[0].lat).toBe(11.94);
+    // One search + one place/v3 — the junk rows bought nothing.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('VMAP-026: a string-typed coordinate resolves to null instead of a bogus pin', async () => {
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, headers: { get: () => null }, json: async () => [{ ref_id: 'vmg:POI:1', name: 'Quán', lat: 'mười', lng: 'sáu' }] })
+      .mockResolvedValueOnce({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ name: 'Quán', display: 'Đà Lạt', lat: 'một', lng: 'hai' }) });
+    vi.stubGlobal('fetch', fetchSpy);
+    const places = await provider().searchText('quán');
+    // Both hops answered garbage coordinates — the map gets null, not "một".
+    expect(places[0].lat).toBeNull();
+    expect(places[0].lng).toBeNull();
+    expect(places[0].address).toBe('Đà Lạt');
+  });
 });
 
 // ── Error translation ────────────────────────────────────────────────────────
@@ -302,6 +329,19 @@ describe('VietmapPlacesProvider.placeDetails', () => {
     vi.stubGlobal('fetch', fetchSpy);
     expect(await provider().placeDetails('ChIJsomething')).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('VMAP-052: the flat address fills in when display is absent', async () => {
+    // Some place/v3 rows answer `address` but no `display` — dropping it meant
+    // a card with a name and no address at all.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ name: 'Quán', address: '5 Nguyễn Huệ, Quận 1', lat: 10.77, lng: 106.7 }) }));
+    const place = await provider().placeDetails('vietmap:vmg:POI:9');
+    expect(place!.address).toBe('5 Nguyễn Huệ, Quận 1');
+  });
+
+  it('VMAP-053: a non-object detail body answers null, not an empty place', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, headers: { get: () => null }, json: async () => ['row', 'row2'] }));
+    await expect(provider().placeDetails('vietmap:vmg:POI:9')).resolves.toBeNull();
   });
 });
 
@@ -415,6 +455,20 @@ describe('MapsService.keyedProvider with VIETMAP', () => {
     const { place } = await svc.getPlaceDetails(1, 'vietmap:vmg:POI:1');
     expect(place!.source).toBe('vietmap');
     expect(calledUrl()).not.toContain('overpass');
+  });
+
+  it('VMAP-078: expand=1 answers a vietmap id from its own lookup, not null', async () => {
+    // A vietmap id is not a Google id — expanded details fall back to the
+    // plain lookup like amap and OSM ids, instead of answering { place: null }.
+    mockProviderGet.mockReturnValue({ value: 'vietmap' });
+    keys({ vietmap: 'vkey' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, headers: { get: () => null }, json: async () => DETAIL }),
+    );
+    const { place } = await svc.getPlaceDetailsExpanded(1, 'vietmap:vmg:POI:1');
+    expect(place!.name).toBe('Cà Phê Vợt');
+    expect(calledUrl()).toContain('maps.vietmap.vn');
   });
 });
 

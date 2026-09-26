@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { MapPin, Navigation, Search, Users, Vote } from 'lucide-react'
 import { PageSpinner } from '../components/shared/Spinner'
 import { useDecisionJoin } from './decisionJoin/useDecisionJoin'
@@ -176,6 +176,10 @@ function ContextForm({
   const [originPicked, setOriginPicked] = useState(false)
   const [originSuggestions, setOriginSuggestions] = useState<DecisionOriginSuggestion[]>([])
   const [originSearching, setOriginSearching] = useState(false)
+  // Monotonic origin-edit counter: the last user action wins. A pending GPS
+  // fix applies only while the counter is unmoved, so a late fix can't stomp
+  // a suggestion picked after the button was clicked.
+  const originSeq = useRef(0)
   const [maxTravel, setMaxTravel] = useState('')
   const [budgetMin, setBudgetMin] = useState('')
   const [budgetMax, setBudgetMax] = useState('')
@@ -216,6 +220,7 @@ function ContextForm({
   }, [originLabel, originPicked, participantToken])
 
   const pickOrigin = (s: DecisionOriginSuggestion) => {
+    originSeq.current++
     setOriginLabel(s.name + (s.address ? ` · ${s.address}` : ''))
     setOriginLat(s.lat.toFixed(6))
     setOriginLng(s.lng.toFixed(6))
@@ -224,6 +229,7 @@ function ContextForm({
   }
 
   const clearOrigin = () => {
+    originSeq.current++
     setOriginPicked(false)
     setOriginLat('')
     setOriginLng('')
@@ -232,12 +238,15 @@ function ContextForm({
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return
+    const seq = ++originSeq.current
     navigator.geolocation.getCurrentPosition(
       pos => {
+        // Drop a stale fix: typing, picking, or clearing since the click wins.
+        if (originSeq.current !== seq) return
         setOriginLat(pos.coords.latitude.toFixed(6))
         setOriginLng(pos.coords.longitude.toFixed(6))
         setOriginPicked(true)
-        if (!originLabel) setOriginLabel('Vị trí của tôi')
+        setOriginLabel(prev => prev || 'Vị trí của tôi')
       },
       () => {},
       { timeout: 8000 },
@@ -277,6 +286,7 @@ function ContextForm({
           <input
             value={originLabel}
             onChange={e => {
+              originSeq.current++
               setOriginLabel(e.target.value)
               if (originPicked) clearOrigin()
             }}

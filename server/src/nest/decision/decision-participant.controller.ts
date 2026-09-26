@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type { DecisionCandidate, DecisionOriginSearchResponse, DecisionParticipant, DecisionParticipantSessionResponse, DecisionVoteTally, RecommendationResult } from '@trek/shared';
 import { MapsService } from '../maps/maps.service';
+import { RateLimitService } from '../common/rate-limit.service';
 import { DecisionService } from './decision.service';
 import { DecisionResolverService } from './resolver/resolver.service';
 import { DecisionTelemetryService } from './decision-telemetry.service';
@@ -35,6 +36,7 @@ export class DecisionParticipantController {
     private readonly resolver: DecisionResolverService,
     private readonly telemetry: DecisionTelemetryService,
     private readonly maps: MapsService,
+    private readonly rl: RateLimitService,
   ) {}
 
   /** GET /api/decision-participant/session — the room, the roster, own context. */
@@ -110,7 +112,12 @@ export class DecisionParticipantController {
    * member's personal key can be spent by an anonymous invite link.
    */
   @Get('origin-search')
-  async originSearch(@CurrentParticipant() _p: DecisionParticipant, @Query('q') q?: string): Promise<DecisionOriginSearchResponse> {
+  async originSearch(@CurrentParticipant() p: DecisionParticipant, @Query('q') q?: string): Promise<DecisionOriginSearchResponse> {
+    // A participant token costs nothing to mint, but every call spends the
+    // instance's shared provider quota — cap it per participant like auth.
+    if (!this.rl.check('decision-origin-search', `p:${p.id}`, 30, 60_000, Date.now())) {
+      throw new HttpException({ error: 'Too many attempts. Please try again later.' }, 429);
+    }
     const query = typeof q === 'string' ? q.trim() : '';
     if (!query) throw new HttpException({ error: 'q is required' }, 400);
     const { places } = await this.maps.search(0, query, 'vi');
