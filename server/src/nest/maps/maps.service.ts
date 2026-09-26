@@ -13,7 +13,8 @@ import { readEnv, getAppUrl } from '../../app-config';
 import { safeFetchFollow, SsrfBlockedError } from '../../utils/ssrfGuard';
 import { discardBody, exceedsDeclaredLength, readCapped, readCappedText } from '../../utils/cappedFetch';
 import { resolveApiKey, type ApiKeySource } from '../settings/instance-api-keys';
-import { isPlacesProviderChoice, type PlacesProviderChoice } from './providers/places-provider';
+import { isPlacesProviderChoice, type PlacesProvider, type PlacesProviderChoice } from './providers/places-provider';
+import { decrypt_api_key } from '../common/crypto/apiKeyCrypto';
 import {
   AMAP_SHORT_HOSTS,
   AmapPlacesProvider,
@@ -21,6 +22,11 @@ import {
   isAmapPlaceId,
   parseAmapUrl,
 } from './providers/amap.provider';
+import {
+  VietmapPlacesProvider,
+  isVietmapPlaceId,
+  isOutsideVietnam,
+} from './providers/vietmap.provider';
 // ── Photo cache (disk-backed) ────────────────────────────────────────────────
 import { PlacePhotoCacheService } from '../place-photos/place-photo-cache.service';
 import { DatabaseService } from '../database/database.service';
@@ -677,7 +683,8 @@ export const PLACES_GOOGLE_ONLY_SETTING = 'places_google_only';
  */
 type KeyedProvider =
   | { id: 'google'; key: string; source: ApiKeySource | null }
-  | { id: 'amap'; provider: AmapPlacesProvider };
+  | { id: 'amap'; provider: AmapPlacesProvider }
+  | { id: 'vietmap'; provider: VietmapPlacesProvider };
 
 /**
  * /api/maps domain service — geocoding, the provider fan-out
@@ -1026,6 +1033,25 @@ export class MapsService {
     return resolveApiKey(this.database, 'amap_api_key', userId, readEnv().maps.amapApiKey);
   }
 
+  /**
+   * The VIETMAP credential: operator env first, then the instance-wide
+   * `vietmap_api_key` app_settings row. There is deliberately no per-user
+   * fallback — no `users.vietmap_api_key` column exists, and inventing one
+   * would bill a member's quota for a shared search. The same env var already
+   * feeds the decision travel-matrix provider. Takes a userId like its
+   * siblings so callers need no special case.
+   */
+  resolveVietmapKey(_userId: number): { key: string | null; source: ApiKeySource | null } {
+    const operatorKey = readEnv().decision.vietmapApiKey;
+    if (operatorKey) return { key: operatorKey, source: 'operator-env' };
+    const row = this.database.get<{ value: string | null }>(
+      'SELECT value FROM app_settings WHERE key = ?',
+      'vietmap_api_key',
+    );
+    const instance = row?.value ? decrypt_api_key(row.value) : null;
+    return instance ? { key: instance, source: 'instance' } : { key: null, source: null };
+  }
+
   // ── Keyed provider selection ───────────────────────────────────────────────
 
   /**
@@ -1062,7 +1088,7 @@ export class MapsService {
     const choice = this.placesProviderChoice();
     if (choice === 'openstreetmap') return null;
 
-    if (choice !== 'amap') {
+    if (choice !== 'amap' && choice !== 'vietmap') {
       const google = this.resolveMapsKey(userId);
       if (google.key) return { id: 'google', key: google.key, source: google.source };
       // An explicit 'google' choice with no key is not a reason to query Amap
@@ -1071,9 +1097,17 @@ export class MapsService {
       if (choice === 'google') return null;
     }
 
-    const amap = this.resolveAmapKey(userId);
-    return amap.key
-      ? { id: 'amap', provider: new AmapPlacesProvider({ key: amap.key, source: amap.source, userId }) }
+    if (choice !== 'vietmap') {
+      const amap = this.resolveAmapKey(userId);
+      if (amap.key) {
+        return { id: 'amap', provider: new AmapPlacesProvider({ key: amap.key, source: amap.source, userId }) };
+      }
+      if (choice === 'amap') return null;
+    }
+
+    const vietmap = this.resolveVietmapKey(userId);
+    return vietmap.key
+      ? { id: 'vietmap', provider: new VietmapPlacesProvider({ key: vietmap.key, source: vietmap.source, userId }) }
       : null;
   }
 
@@ -1104,10 +1138,14 @@ export class MapsService {
     return row?.value === 'true';
   }
 
-  /** The Amap provider, when Amap holds the keyed slot; null otherwise. */
-  resolvePlacesProvider(userId: number): AmapPlacesProvider | null {
+  /**
+   * The keyed non-Google provider (Amap or VIETMAP), when one holds the slot;
+   * null on Google or the OSM stack alone. Used where the inline Google path
+   * cannot serve — e.g. reverse geocoding.
+   */
+  resolvePlacesProvider(userId: number): AmapPlacesProvider | VietmapPlacesProvider | null {
     const keyed = this.keyedProvider(userId);
-    return keyed?.id === 'amap' ? keyed.provider : null;
+    return keyed && keyed.id !== 'google' ? keyed.provider : null;
   }
 
   /**
@@ -1124,10 +1162,16 @@ export class MapsService {
    * install that has since dropped its Amap key. Callers treat that as a miss,
    * not an error.
    */
-  private providerForPlaceId(userId: number, placeId: string): AmapPlacesProvider | null {
-    if (!isAmapPlaceId(placeId)) return null;
-    const amap = this.resolveAmapKey(userId);
-    return amap.key ? new AmapPlacesProvider({ key: amap.key, source: amap.source, userId }) : null;
+  private providerForPlaceId(userId: number, placeId: string): PlacesProvider | null {
+    if (isAmapPlaceId(placeId)) {
+      const amap = this.resolveAmapKey(userId);
+      return amap.key ? new AmapPlacesProvider({ key: amap.key, source: amap.source, userId }) : null;
+    }
+    if (isVietmapPlaceId(placeId)) {
+      const vietmap = this.resolveVietmapKey(userId);
+      return vietmap.key ? new VietmapPlacesProvider({ key: vietmap.key, source: vietmap.source, userId }) : null;
+    }
+    return null;
   }
 
   /**
@@ -2135,11 +2179,11 @@ export class MapsService {
       }
     }
 
-    // Amap in the slot Google otherwise holds: asked only once the index and
-    // OpenStreetMap came back empty, exactly like the Google call below.
-    if (keyed?.id === 'amap') {
+    // Amap or VIETMAP in the slot Google otherwise holds: asked only once the
+    // index and OpenStreetMap came back empty, exactly like the Google call below.
+    if (keyed?.id === 'amap' || keyed?.id === 'vietmap') {
       const places = await keyed.provider.searchText(query, lang, locationBias);
-      return { places, source: 'amap' };
+      return { places, source: keyed.id };
     }
 
     if (!apiKey) {
@@ -2301,9 +2345,9 @@ export class MapsService {
       }
     }
 
-    if (keyed?.id === 'amap') {
+    if (keyed?.id === 'amap' || keyed?.id === 'vietmap') {
       const suggestions = await keyed.provider.autocomplete(input, lang, locationBias);
-      return { suggestions, source: 'amap' };
+      return { suggestions, source: keyed.id };
     }
 
     if (!apiKey) {
@@ -2462,10 +2506,12 @@ export class MapsService {
       };
     }
 
-    // An Amap id is `amap:<poiid>` and so carries a colon too. Before the OSM
-    // branch, which would otherwise send "amap" to Overpass as an element type
-    // and answer every Chinese place with an empty record.
-    if (isAmapPlaceId(placeId)) return this.amapDetails(userId, placeId, lang);
+    // Keyed-provider ids (`amap:<poiid>`, `vietmap:<refid>`) carry a colon too.
+    // Before the OSM branch, which would otherwise send "amap" or "vietmap" to
+    // Overpass as an element type and answer with an empty record.
+    if (isAmapPlaceId(placeId) || isVietmapPlaceId(placeId)) {
+      return this.keyedProviderDetails(userId, placeId, lang);
+    }
 
     // OSM details: placeId is "node:123456" or "way:123456" etc.
     if (placeId.includes(':')) {
@@ -2597,15 +2643,15 @@ export class MapsService {
   }
 
   /**
-   * The Amap half of getPlaceDetails, behind the same cache the Google half
-   * uses. Keyed by place_id, and an Amap id carries its `amap:` prefix, so the
-   * two providers' rows cannot collide.
+   * The keyed-provider half of getPlaceDetails (Amap and VIETMAP), behind the
+   * same cache the Google half uses. Keyed by place_id, and each provider's id
+   * carries its own prefix (`amap:`, `vietmap:`), so their rows cannot collide.
    *
    * No key for the id is an empty result, not a client error, for the same
-   * reason the Google half answers its keyless case that way: an Amap place
-   * opened on an install that has since dropped its Amap key is a miss.
+   * reason the Google half answers its keyless case that way: a place opened
+   * on an install that has since dropped that provider's key is a miss.
    */
-  private async amapDetails(
+  private async keyedProviderDetails(
     userId: number,
     placeId: string,
     lang?: string,
@@ -2933,16 +2979,22 @@ export class MapsService {
     // operator env var and the instance-wide row, and nobody's personal key is
     // read on somebody else's behalf (#1939). Nominatim stays the fallback, so
     // an Amap outage does not take a right-click down with it.
-    const amap = this.resolvePlacesProvider(0);
-    if (amap) {
+    const keyed = this.resolvePlacesProvider(0);
+    if (keyed) {
       const latNum = Number.parseFloat(lat);
       const lngNum = Number.parseFloat(lng);
-      if (Number.isFinite(latNum) && Number.isFinite(lngNum) && !isOutsideChina(latNum, lngNum)) {
+      // Only ask the provider for a point inside its coverage box: an Amap call
+      // for a European point or a VIETMAP call for one outside Vietnam costs a
+      // round trip to come back empty before Nominatim is asked anyway.
+      const inCoverage = keyed.id === 'amap'
+        ? !isOutsideChina(latNum, lngNum)
+        : !isOutsideVietnam(latNum, lngNum);
+      if (Number.isFinite(latNum) && Number.isFinite(lngNum) && inCoverage) {
         try {
-          const answer = await amap.reverse(latNum, lngNum, lang);
+          const answer = await keyed.reverse(latNum, lngNum, lang);
           if (answer) return answer;
         } catch (err) {
-          console.error('[Maps] amap reverse geocode failed, falling back to Nominatim:', (err as Error).message);
+          console.error(`[Maps] ${keyed.id} reverse geocode failed, falling back to Nominatim:`, (err as Error).message);
         }
       }
     }

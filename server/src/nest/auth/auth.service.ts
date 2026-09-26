@@ -270,6 +270,12 @@ export class AuthService {
     // tell "search is unavailable" from "search runs on OpenStreetMap", and to
     // know whether the provider the admin selected actually has a credential.
     const hasAmapKey = !!resolveApiKey(this.db, 'amap_api_key', authenticatedUser?.id ?? 0, readEnv().maps.amapApiKey).key;
+    // VIETMAP has no users column — the chain is env → the instance row, so
+    // resolveApiKey's per-user step does not apply.
+    const hasVietmapKey = !!(
+      readEnv().decision.vietmapApiKey ||
+      decrypt_api_key(this.db.get<{ value: string }>("SELECT value FROM app_settings WHERE key = 'vietmap_api_key'")?.value)
+    );
     const placesProviderRow = this.db.get<{ value: string }>("SELECT value FROM app_settings WHERE key = 'places_provider'")?.value;
     const placesProvider = isPlacesProviderChoice(placesProviderRow) ? placesProviderRow : 'auto';
     const oidcDisplayName = readEnv().oidc.displayName ||
@@ -323,6 +329,7 @@ export class AuthService {
       is_prerelease: version.includes('-pre.'),
       has_maps_key: hasGoogleKey,
       has_amap_key: hasAmapKey,
+      has_vietmap_key: hasVietmapKey,
       places_provider: placesProvider,
       oidc_configured: oidcConfigured,
       oidc_display_name: oidcConfigured ? (oidcDisplayName || 'SSO') : undefined,

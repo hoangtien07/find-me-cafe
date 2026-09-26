@@ -6,9 +6,11 @@ import {
   HttpException,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import type { DecisionCandidate, DecisionParticipant, DecisionParticipantSessionResponse, DecisionVoteTally, RecommendationResult } from '@trek/shared';
+import type { DecisionCandidate, DecisionOriginSearchResponse, DecisionParticipant, DecisionParticipantSessionResponse, DecisionVoteTally, RecommendationResult } from '@trek/shared';
+import { MapsService } from '../maps/maps.service';
 import { DecisionService } from './decision.service';
 import { DecisionResolverService } from './resolver/resolver.service';
 import { DecisionTelemetryService } from './decision-telemetry.service';
@@ -32,6 +34,7 @@ export class DecisionParticipantController {
     private readonly decisions: DecisionService,
     private readonly resolver: DecisionResolverService,
     private readonly telemetry: DecisionTelemetryService,
+    private readonly maps: MapsService,
   ) {}
 
   /** GET /api/decision-participant/session — the room, the roster, own context. */
@@ -97,5 +100,29 @@ export class DecisionParticipantController {
   @Get('votes')
   votes(@CurrentParticipant() p: DecisionParticipant): DecisionVoteTally {
     return this.decisions.voteTally(p.decision_session_id);
+  }
+
+  /**
+   * GET /api/decision-participant/origin-search?q=… — forward-geocode the
+   * participant's "where are you coming from" so nobody types coordinates.
+   * Resolved as userId 0: a participant's scoped token is not a TREK account,
+   * so the key chain stops at operator env and the instance row, and no
+   * member's personal key can be spent by an anonymous invite link.
+   */
+  @Get('origin-search')
+  async originSearch(@CurrentParticipant() _p: DecisionParticipant, @Query('q') q?: string): Promise<DecisionOriginSearchResponse> {
+    const query = typeof q === 'string' ? q.trim() : '';
+    if (!query) throw new HttpException({ error: 'q is required' }, 400);
+    const { places } = await this.maps.search(0, query, 'vi');
+    const suggestions = places
+      .filter((pl) => typeof pl.lat === 'number' && Number.isFinite(pl.lat) && typeof pl.lng === 'number' && Number.isFinite(pl.lng))
+      .slice(0, 5)
+      .map((pl) => ({
+        name: typeof pl.name === 'string' && pl.name ? pl.name : query,
+        address: typeof pl.address === 'string' ? pl.address : null,
+        lat: pl.lat as number,
+        lng: pl.lng as number,
+      }));
+    return { suggestions };
   }
 }

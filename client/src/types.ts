@@ -371,6 +371,8 @@ export interface AppConfig {
   has_maps_key?: boolean
   /** Amap (高德地图) key present for this caller — the alternative places provider. */
   has_amap_key?: boolean
+  /** VIETMAP key present on this install — the VN-market places provider. */
+  has_vietmap_key?: boolean
   /** The admin's places provider choice: 'auto' | 'google' | 'amap' | 'openstreetmap'. */
   places_provider?: string
   allowed_file_types?: string

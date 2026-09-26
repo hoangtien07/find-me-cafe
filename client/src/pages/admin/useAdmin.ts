@@ -53,6 +53,7 @@ export function useAdmin() {
   // operator key set through the environment never reaches them either.
   const hasMapsKey = useAuthStore(s => s.hasMapsKey)
   const hasAmapKey = useAuthStore(s => s.hasAmapKey)
+  const hasVietmapKey = useAuthStore(s => s.hasVietmapKey)
 
   // ?tab= makes a section linkable: a support reply, an onboarding mail or a
   // bookmark can point at the one panel it is about instead of at the top of a
@@ -517,7 +518,7 @@ export function useAdmin() {
     allowedFileTypes, setAllowedFileTypes, savingFileTypes, setSavingFileTypes,
     smtpValues, setSmtpValues, smtpLoaded,
     mapsKey, setMapsKey, weatherKey, setWeatherKey, unsplashKey, setUnsplashKey,
-    amapKey, setAmapKey, hasMapsKey, hasAmapKey,
+    amapKey, setAmapKey, hasMapsKey, hasAmapKey, hasVietmapKey,
     placesProvider, savingPlacesProvider, handleSavePlacesProvider,
     showKeys, setShowKeys, savingKeys, validating, validation,
     updateInfo, setUpdateInfo, showUpdateModal, setShowUpdateModal,

@@ -176,6 +176,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': '自動',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap（高德地图）',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': '選択したプロバイダに API キーが設定されていないため、地点検索には TREK の索引と OpenStreetMap だけが答えます。',
   'admin.placesProvider.saved': '地点検索のプロバイダーを保存しました',

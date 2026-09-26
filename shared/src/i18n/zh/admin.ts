@@ -141,6 +141,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': '自动',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': '高德地图',
+  'admin.placesProvider.vietmap': 'VietMap（越南地图）',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': '所选服务商未配置 API 密钥，因此地点搜索仅由 TREK 索引和 OpenStreetMap 回应。',
   'admin.placesProvider.saved': '地点搜索源已保存',

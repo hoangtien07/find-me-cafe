@@ -103,6 +103,7 @@ describe('decisionPlacesRepo.addCandidate', () => {
     google_place_id: null,
     google_ftid: null,
     amap_poi_id: null,
+    vietmap_ref_id: null,
     website: 'https://caphevot.vn',
     phone: '0901234567',
     rating: 4.5,

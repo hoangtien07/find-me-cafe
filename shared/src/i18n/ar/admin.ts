@@ -163,6 +163,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'تلقائي',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': 'لا يوجد مفتاح API للمزوّد المختار، لذا يجيب عن البحث عن الأماكن فهرس TREK وOpenStreetMap وحدهما.',
   'admin.placesProvider.saved': 'تم حفظ مزوّد البحث عن الأماكن',

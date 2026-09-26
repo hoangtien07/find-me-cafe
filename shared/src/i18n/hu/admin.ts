@@ -142,6 +142,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'Automatikus',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': 'A kiválasztott szolgáltatóhoz nincs API-kulcs beállítva, ezért a helykeresésre csak a TREK indexe és az OpenStreetMap válaszol.',
   'admin.placesProvider.saved': 'Helykeresési szolgáltató elmentve',

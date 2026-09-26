@@ -181,6 +181,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': '자동',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap(高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': '선택한 공급자에 API 키가 설정되어 있지 않아 장소 검색은 TREK 색인과 OpenStreetMap만 응답합니다.',
   'admin.placesProvider.saved': '장소 검색 제공자를 저장했습니다',

@@ -52,6 +52,8 @@ interface AuthState {
    *  into one "has a search key": which of the two is missing decides what the
    *  admin has to go and do. */
   hasAmapKey: boolean
+  /** The same question for VIETMAP — the VN-market provider. */
+  hasVietmapKey: boolean
   /** The admin's places provider choice, as app-config normalises it: 'auto',
    *  'google', 'amap' or 'openstreetmap'. Read with hasMapsKey to tell whether
    *  a search can reach Google at all (utils/placeSource googleHoldsSlot). */
@@ -85,6 +87,7 @@ interface AuthState {
   setAppVersion: (val: string) => void
   setHasMapsKey: (val: boolean) => void
   setHasAmapKey: (val: boolean) => void
+  setHasVietmapKey: (val: boolean) => void
   setPlacesProvider: (val: string) => void
   setServerTimezone: (tz: string) => void
   setAppRequireMfa: (val: boolean) => void
@@ -137,6 +140,7 @@ export const useAuthStore = create<AuthState>()(
   appVersion: '',
   hasMapsKey: false,
   hasAmapKey: false,
+  hasVietmapKey: false,
   placesProvider: 'auto',
   serverTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   appRequireMfa: false,
@@ -408,6 +412,7 @@ export const useAuthStore = create<AuthState>()(
   setAppVersion: (val: string) => set({ appVersion: val }),
   setHasMapsKey: (val: boolean) => set({ hasMapsKey: val }),
   setHasAmapKey: (val: boolean) => set({ hasAmapKey: val }),
+  setHasVietmapKey: (val: boolean) => set({ hasVietmapKey: val }),
   setPlacesProvider: (val: string) => set({ placesProvider: val }),
   setServerTimezone: (tz: string) => set({ serverTimezone: tz }),
   setAppRequireMfa: (val: boolean) => set({ appRequireMfa: val }),
