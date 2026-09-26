@@ -738,7 +738,7 @@ export function parseWikipediaTag(tag: string | undefined | null): { lang: strin
 // ordinary new place now carries. Leaving it out billed three invalid lookups
 // per place — photo refs, editorial summary, and the photo route.
 const NON_GOOGLE_PLACE_ID =
-  /^(?:coords|gers|node|way|relation|amap):|^https?:\/\/|^-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?$|~p\d+$/i;
+  /^(?:coords|gers|node|way|relation|amap|vietmap):|^https?:\/\/|^-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?$|~p\d+$/i;
 // The subset that still has a provider behind it — Overpass for details,
 // Wikimedia for photos. The id has to be the whole of what follows the colon:
 // it is written into an Overpass query as it is, and an element id is a number.

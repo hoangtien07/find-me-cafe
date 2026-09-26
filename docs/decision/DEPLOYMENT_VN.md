@@ -29,14 +29,18 @@ Key KHÔNG commit vào repo — đưa qua env của deployment hoặc secret sto
 
 ## Place search
 
-Hiện tại: TREK Places + Nominatim (OSM) — chạy ngay không cần key; coverage
-VN ở mức alpha. Nâng cấp theo thứ tự ưu tiên:
+`VietmapPlacesProvider` đã tích hợp (search/autocomplete/details/reverse qua
+VIETMAP API v3). Bật bằng **Admin → Settings → Places provider → VietMap**
+(`places_provider=vietmap`), hoặc để `auto` — chuỗi auto thử Google → Amap →
+VietMap, dùng provider đầu tiên có key. Key đọc từ `VIETMAP_API_KEY` env
+(không có ô nhập trong admin UI — khác Google/Amap vốn ghi vào cột users).
 
-1. `places_provider=google` trong admin settings (key đã có sẵn integration) —
-   coverage VN tốt nhất ngay bây giờ.
-2. VietMap search adapter cho `/api/maps/*` — seam mới theo pattern
-   `providers/amap.provider.ts`, chưa implement (future work nếu muốn full
-   VietMap stack).
+Cùng một key dùng cho cả matrix lẫn place search. Participant "Bạn xuất phát
+từ đâu?" trên trang join cũng qua seam này (`/api/decision-participant/
+origin-search`) — không còn nhập lat/lng tay.
+
+Ưu tiên dự phòng: `places_provider=google` vẫn là phương án coverage tốt nhất
+khi có Google key.
 
 ## Map tiles
 
@@ -82,7 +86,8 @@ default 3000). Healthcheck sẵn: `GET /api/health`.
 | `FORCE_HTTPS` | `true` | HTTPS redirect + secure cookies |
 | `ADMIN_PASSWORD` | `<tự đặt>` | mật khẩu admin lần đầu |
 | `DECISION_MATRIX_PROVIDER` | `vietmap` | ETA xe máy cho VN |
-| `VIETMAP_API_KEY` | `<key từ vietmap.vn>` | gõ "API key (search, route...)" |
+| `VIETMAP_API_KEY` | `<key từ vietmap.vn>` | gõ "API key (search, route...)" — dùng chung cho matrix + place search + geocode |
+| `places_provider` | `vietmap` | admin setting (không phải env) — search/geocode qua VietMap |
 | `PORT` | — | Railway inject, không set tay |
 
 ### Qua railway CLI

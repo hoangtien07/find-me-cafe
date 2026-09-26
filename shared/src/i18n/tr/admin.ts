@@ -185,6 +185,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'Otomatik',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': 'Seçilen sağlayıcı için API anahtarı tanımlı değil; yer aramasını yalnızca TREK dizini ve OpenStreetMap yanıtlar.',
   'admin.placesProvider.saved': 'Yer arama sağlayıcısı kaydedildi',

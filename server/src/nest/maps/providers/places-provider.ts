@@ -4,10 +4,10 @@
  * Search, autocomplete and details ask the TREK index and OpenStreetMap first;
  * neither needs a credential, and together they answer on every install.
  * Behind them sits one keyed provider, the one an admin configures and that
- * bills somebody: Google, which MapsService still calls inline, or Amap,
- * which comes through this interface. The `places_provider` row in
- * app_settings says which of the two holds that slot, and `auto` keeps
- * whatever the install already used.
+ * bills somebody: Google, which MapsService still calls inline, Amap, or
+ * VIETMAP — the latter two come through this interface. The `places_provider`
+ * row in app_settings says which holds that slot, and `auto` keeps whatever
+ * the install already used.
  *
  * OpenStreetMap deliberately does NOT implement this interface. It is the
  * keyless floor every install falls back to, it has no credential to resolve,
@@ -24,7 +24,7 @@
 import type { ApiKeySource } from '../../settings/instance-api-keys';
 
 /** The keyed providers. OpenStreetMap is absent on purpose, see the file header. */
-export type PlacesProviderId = 'google' | 'amap';
+export type PlacesProviderId = 'google' | 'amap' | 'vietmap';
 
 /**
  * What an admin can choose. `auto` keeps whatever the install already used:
@@ -38,6 +38,7 @@ export const PLACES_PROVIDER_CHOICES: readonly PlacesProviderChoice[] = [
   'auto',
   'google',
   'amap',
+  'vietmap',
   'openstreetmap',
 ];
 

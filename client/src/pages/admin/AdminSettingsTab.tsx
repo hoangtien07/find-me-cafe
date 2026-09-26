@@ -37,7 +37,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
     passkeyLogin, setPasskeyLogin, passkeyConfigured,
     webauthnRpId, setWebauthnRpId, webauthnOrigins, setWebauthnOrigins, savingWebauthn, handleSaveWebauthn,
     allowedFileTypes, setAllowedFileTypes, savingFileTypes, setSavingFileTypes,
-    mapsKey, setMapsKey, unsplashKey, setUnsplashKey, amapKey, setAmapKey, hasMapsKey, hasAmapKey, showKeys, savingKeys, validating, validation,
+    mapsKey, setMapsKey, unsplashKey, setUnsplashKey, amapKey, setAmapKey, hasMapsKey, hasAmapKey, hasVietmapKey, showKeys, savingKeys, validating, validation,
     placesProvider, savingPlacesProvider, handleSavePlacesProvider,
     managed,
     setShowRotateJwtModal,
@@ -671,6 +671,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
                   { value: 'auto', label: t('admin.placesProvider.auto') },
                   { value: 'google', label: t('admin.placesProvider.google') },
                   { value: 'amap', label: t('admin.placesProvider.amap') },
+                  { value: 'vietmap', label: t('admin.placesProvider.vietmap') },
                   { value: 'openstreetmap', label: t('admin.placesProvider.openstreetmap') },
                 ]}
                 size="sm"
@@ -683,7 +684,7 @@ export default function AdminSettingsTab({ admin, t }: AdminSettingsTabProps): R
                   install and on an operator key that came from the environment,
                   and saying "falls back to OpenStreetMap" to an admin whose
                   search works is worse than saying nothing. */}
-              {((placesProvider === 'google' && !hasMapsKey) || (placesProvider === 'amap' && !hasAmapKey)) && (
+              {((placesProvider === 'google' && !hasMapsKey) || (placesProvider === 'amap' && !hasAmapKey) || (placesProvider === 'vietmap' && !hasVietmapKey)) && (
                 <p className="flex items-start gap-2 text-xs text-warning bg-warning-soft border border-warning/30 rounded-lg px-3 py-2 mt-2">
                   <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
                   {t('admin.placesProvider.missingKey')}

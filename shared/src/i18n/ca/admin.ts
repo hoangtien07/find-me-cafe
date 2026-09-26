@@ -452,6 +452,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'Automàtic',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey':
     "El proveïdor seleccionat no té cap clau d'API configurada, així que la cerca de llocs la responen només l'índex de TREK i OpenStreetMap.",

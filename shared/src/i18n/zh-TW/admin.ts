@@ -180,6 +180,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': '自動',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': '高德地圖',
+  'admin.placesProvider.vietmap': 'VietMap（越南地圖）',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': '所選服務商未設定 API 金鑰，因此地點搜尋僅由 TREK 索引和 OpenStreetMap 回應。',
   'admin.placesProvider.saved': '地點搜尋來源已儲存',

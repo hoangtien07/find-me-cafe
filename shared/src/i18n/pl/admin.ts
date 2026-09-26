@@ -134,6 +134,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'Automatycznie',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': 'Wybrany dostawca nie ma skonfigurowanego klucza API, więc na wyszukiwanie miejsc odpowiadają tylko indeks TREK i OpenStreetMap.',
   'admin.placesProvider.saved': 'Zapisano dostawcę wyszukiwania miejsc',

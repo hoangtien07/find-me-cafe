@@ -44,7 +44,7 @@ export default function MAdminSettingsSection({ admin, t }: MAdminSettingsSectio
     passkeyLogin, setPasskeyLogin, passkeyConfigured,
     webauthnRpId, setWebauthnRpId, webauthnOrigins, setWebauthnOrigins, savingWebauthn, handleSaveWebauthn,
     allowedFileTypes, setAllowedFileTypes, savingFileTypes, setSavingFileTypes,
-    mapsKey, setMapsKey, unsplashKey, setUnsplashKey, amapKey, setAmapKey, hasMapsKey, hasAmapKey, savingKeys, validating, validation,
+    mapsKey, setMapsKey, unsplashKey, setUnsplashKey, amapKey, setAmapKey, hasMapsKey, hasAmapKey, hasVietmapKey, savingKeys, validating, validation,
     placesProvider, savingPlacesProvider, handleSavePlacesProvider,
     managed,
     setShowRotateJwtModal,
@@ -412,12 +412,13 @@ export default function MAdminSettingsSection({ admin, t }: MAdminSettingsSectio
                 { value: 'auto', label: t('admin.placesProvider.auto') },
                 { value: 'google', label: t('admin.placesProvider.google') },
                 { value: 'amap', label: t('admin.placesProvider.amap') },
+                { value: 'vietmap', label: t('admin.placesProvider.vietmap') },
                 { value: 'openstreetmap', label: t('admin.placesProvider.openstreetmap') },
               ]}
             />
             {/* From app-config, like the desktop card: the key fields are empty
                 on a managed install and on an operator key set by environment. */}
-            {((placesProvider === 'google' && !hasMapsKey) || (placesProvider === 'amap' && !hasAmapKey)) && (
+            {((placesProvider === 'google' && !hasMapsKey) || (placesProvider === 'amap' && !hasAmapKey) || (placesProvider === 'vietmap' && !hasVietmapKey)) && (
               <p className="mt-1 font-geist text-[0.625rem] font-bold text-[color:var(--m-st-pending)]">
                 {t('admin.placesProvider.missingKey')}
               </p>

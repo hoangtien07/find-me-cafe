@@ -34,6 +34,7 @@ export interface VenuePick {
   google_place_id: string | null
   google_ftid: string | null
   amap_poi_id: string | null
+  vietmap_ref_id: string | null
   website: string | null
   phone: string | null
   rating: number | null
@@ -116,6 +117,7 @@ export const decisionPlacesRepo = {
       google_place_id: asString(blob.google_place_id),
       google_ftid: asString(blob.google_ftid),
       amap_poi_id: asString(blob.amap_poi_id),
+      vietmap_ref_id: asString(blob.vietmap_ref_id),
       website: asString(blob.website),
       phone: asString(blob.phone),
       rating: asNumber(blob.rating),
@@ -168,6 +170,7 @@ export const decisionPlacesRepo = {
       opening_special_days: pick.opening_special_days,
       facts: pick.facts,
       google_maps_url: pick.google_maps_url,
+      vietmap_ref_id: pick.vietmap_ref_id,
     }
     const body: AddDecisionCandidateRequest = { place_id: place.id, evidence }
     const { candidate } = await decisionApi.addCandidate(sessionId, body)
@@ -178,7 +181,7 @@ export const decisionPlacesRepo = {
    * Provider id a pick or candidate carries — the dedup key. The same café can
    * arrive twice via different suggestion rows; ids don't.
    */
-  providerIdOf(pick: Pick<VenuePick, 'google_place_id' | 'osm_id' | 'amap_poi_id'>): string | null {
-    return pick.google_place_id ?? pick.osm_id ?? pick.amap_poi_id
+  providerIdOf(pick: Pick<VenuePick, 'google_place_id' | 'osm_id' | 'amap_poi_id' | 'vietmap_ref_id'>): string | null {
+    return pick.google_place_id ?? pick.osm_id ?? pick.amap_poi_id ?? pick.vietmap_ref_id
   },
 }

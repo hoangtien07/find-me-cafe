@@ -639,6 +639,9 @@ export class DecisionService {
       google_ftid: place.google_ftid ?? null,
       osm_id: place.osm_id ?? null,
       amap_poi_id: place.amap_poi_id ?? null,
+      // VIETMAP places have no column on the places table yet; the ref id
+      // travels with the evidence blob into the snapshot.
+      vietmap_ref_id: evidence?.vietmap_ref_id ?? null,
       price: place.price ?? null,
       currency: place.currency ?? null,
       // Provider rating (evidence) outranks the TREK collaborative avg, which a
@@ -663,7 +666,7 @@ export class DecisionService {
     // Provider-id dedup: the same venue can arrive as a different Place row via
     // a second search (or quick-add), and pinning it twice makes the resolver
     // rank one café against itself. place_id dedup above is not enough.
-    const providerId = (snapshot.google_place_id ?? snapshot.osm_id ?? snapshot.amap_poi_id) as string | null;
+    const providerId = (snapshot.google_place_id ?? snapshot.osm_id ?? snapshot.amap_poi_id ?? snapshot.vietmap_ref_id) as string | null;
     if (providerId) {
       const rows = this.db.all<{ snapshot_json: string | null }>(
         'SELECT snapshot_json FROM decision_candidates WHERE decision_session_id = ?',
@@ -672,7 +675,7 @@ export class DecisionService {
       for (const r of rows) {
         if (!r.snapshot_json) continue;
         const s = JSON.parse(r.snapshot_json) as Record<string, unknown>;
-        if (s.google_place_id === providerId || s.osm_id === providerId || s.amap_poi_id === providerId) {
+        if (s.google_place_id === providerId || s.osm_id === providerId || s.amap_poi_id === providerId || s.vietmap_ref_id === providerId) {
           throw new ValidationError('Place is already a candidate');
         }
       }

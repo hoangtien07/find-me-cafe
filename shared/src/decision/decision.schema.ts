@@ -139,6 +139,7 @@ export const decisionCandidateSnapshotSchema = z.object({
   google_place_id: z.string().nullable().optional(),
   google_ftid: z.string().nullable().optional(),
   amap_poi_id: z.string().nullable().optional(),
+  vietmap_ref_id: z.string().nullable().optional(),
   osm_id: z.string().nullable().optional(),
   price: z.number().nullable().optional(),
   currency: z.string().nullable().optional(),
@@ -156,7 +157,7 @@ export const decisionCandidateSnapshotSchema = z.object({
   phone: z.string().nullable().optional(),
   google_maps_url: z.string().nullable().optional(),
   /** Which provider answered the details lookup ('trek-places',
-   * 'openstreetmap', 'google', 'amap'; 'quick-add' when typed by hand). */
+   * 'openstreetmap', 'google', 'amap', 'vietmap'; 'quick-add' when typed by hand). */
   source: z.string().nullable().optional(),
   /** ISO time the evidence was fetched — staleness provenance for the run. */
   retrieved_at: z.string().nullable().optional(),
@@ -185,6 +186,8 @@ export const decisionCandidateEvidenceSchema = z.object({
   opening_special_days: z.array(z.string()).nullable().optional(),
   facts: decisionCandidateFactsSchema.nullable().optional(),
   google_maps_url: z.string().nullable().optional(),
+  /** The provider's own id when the details answered with one ('vietmap:<refid>'). */
+  vietmap_ref_id: z.string().nullable().optional(),
 });
 export type DecisionCandidateEvidence = z.infer<typeof decisionCandidateEvidenceSchema>;
 
@@ -693,3 +696,23 @@ export const decisionSessionMetricsSchema = z.object({
 });
 export type DecisionSessionMetrics = z.infer<typeof decisionSessionMetricsSchema>;
 export const decisionSessionMetricsResponseSchema = decisionSessionMetricsSchema;
+
+/**
+ * GET /api/decision-participant/origin-search?q=… — the participant's origin
+ * picker. A lightweight forward-geocode answer: just enough to fill the
+ * intake's origin fields, so anonymous users never type raw coordinates.
+ * Results come from whichever place-search chain the install answers with
+ * (TREK index → OpenStreetMap → the keyed provider), resolved as userId 0 —
+ * participants hold no TREK account, so only env/instance keys apply.
+ */
+export const decisionOriginSuggestionSchema = z.object({
+  name: z.string(),
+  address: z.string().nullable().optional(),
+  lat: z.number(),
+  lng: z.number(),
+});
+export type DecisionOriginSuggestion = z.infer<typeof decisionOriginSuggestionSchema>;
+export const decisionOriginSearchResponseSchema = z.object({
+  suggestions: z.array(decisionOriginSuggestionSchema),
+});
+export type DecisionOriginSearchResponse = z.infer<typeof decisionOriginSearchResponseSchema>;

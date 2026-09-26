@@ -188,6 +188,7 @@ export function useDecisionJoin() {
     displayName,
     setDisplayName,
     participantId,
+    participantToken,
     result,
     votes,
     myVote,

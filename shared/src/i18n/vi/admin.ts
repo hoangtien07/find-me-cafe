@@ -184,6 +184,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'Tự động',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey':
     'Nhà cung cấp đã chọn chưa có khóa API, nên tìm kiếm địa điểm chỉ do chỉ mục TREK và OpenStreetMap trả lời.',

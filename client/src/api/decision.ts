@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   AddDecisionCandidateRequest,
+  DecisionOriginSearchResponse,
   CreateDecisionRequest,
   CreateDecisionFeedbackRequest,
   CreateDecisionInviteRequest,
@@ -99,4 +100,10 @@ export const decisionParticipantApi = {
   /** M2-10 — the group's tally so far (participant). */
   listVotes: (token: string) =>
     apiClient.get<DecisionVoteTally>('/decision-participant/votes', bearer(token)).then(r => r.data),
+
+  /** Geocoded origin suggestions — the participant's "from" picker. */
+  originSearch: (token: string, q: string, signal?: AbortSignal) =>
+    apiClient
+      .get<DecisionOriginSearchResponse>('/decision-participant/origin-search', { ...bearer(token), params: { q }, signal })
+      .then(r => r.data),
 }

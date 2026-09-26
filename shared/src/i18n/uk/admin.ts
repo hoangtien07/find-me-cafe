@@ -143,6 +143,7 @@ const admin: TranslationStrings = {
   'admin.placesProvider.auto': 'Автоматично',
   'admin.placesProvider.google': 'Google Places',
   'admin.placesProvider.amap': 'Amap (高德地图)',
+  'admin.placesProvider.vietmap': 'VietMap',
   'admin.placesProvider.openstreetmap': 'OpenStreetMap',
   'admin.placesProvider.missingKey': 'Для обраного постачальника не задано ключ API, тому на пошук місць відповідають лише індекс TREK і OpenStreetMap.',
   'admin.placesProvider.saved': 'Постачальника пошуку місць збережено',

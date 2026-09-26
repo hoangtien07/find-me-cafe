@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { MapPin, Navigation, Users, Vote } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { MapPin, Navigation, Search, Users, Vote } from 'lucide-react'
 import { PageSpinner } from '../components/shared/Spinner'
 import { useDecisionJoin } from './decisionJoin/useDecisionJoin'
-import type { DecisionTravelMode, UpdateParticipantContextRequest } from '@trek/shared'
+import { decisionParticipantApi } from '../api/decision'
+import type { DecisionOriginSuggestion, DecisionTravelMode, UpdateParticipantContextRequest } from '@trek/shared'
 
 /** VN labels for the intake chips and the result's per-participant ride mode. */
 const MODE_LABELS: Record<DecisionTravelMode, string> = {
@@ -30,6 +31,7 @@ export default function DecisionJoinPage() {
     voting,
     error,
     submitting,
+    participantToken,
     handleJoin,
     handleSubmitContext,
     handleNavigate,
@@ -81,7 +83,7 @@ export default function DecisionJoinPage() {
           </>
         )}
 
-        {stage === 'context' && <ContextForm submitting={submitting} error={error} onSubmit={handleSubmitContext} />}
+        {stage === 'context' && <ContextForm submitting={submitting} error={error} participantToken={participantToken} onSubmit={handleSubmitContext} />}
 
         {stage === 'waiting' && (
           <div className="py-6 text-center">
@@ -160,15 +162,20 @@ export default function DecisionJoinPage() {
 function ContextForm({
   submitting,
   error,
+  participantToken,
   onSubmit,
 }: {
   submitting: boolean
   error: string | null
+  participantToken: string | null
   onSubmit: (ctx: UpdateParticipantContextRequest) => void
 }) {
   const [originLabel, setOriginLabel] = useState('')
   const [originLat, setOriginLat] = useState('')
   const [originLng, setOriginLng] = useState('')
+  const [originPicked, setOriginPicked] = useState(false)
+  const [originSuggestions, setOriginSuggestions] = useState<DecisionOriginSuggestion[]>([])
+  const [originSearching, setOriginSearching] = useState(false)
   const [maxTravel, setMaxTravel] = useState('')
   const [budgetMin, setBudgetMin] = useState('')
   const [budgetMax, setBudgetMax] = useState('')
@@ -178,12 +185,58 @@ function ContextForm({
   const [vetoCategory, setVetoCategory] = useState('')
   const [travelMode, setTravelMode] = useState<DecisionTravelMode | null>(null)
 
+  // Debounced forward-geocode for the "from" box — aborts the in-flight call
+  // on every keystroke; a picked suggestion or the GPS button freezes coords.
+  useEffect(() => {
+    const q = originLabel.trim()
+    if (originPicked || q.length < 2 || !participantToken) {
+      setOriginSuggestions([])
+      setOriginSearching(false)
+      return
+    }
+    const ctl = new AbortController()
+    const t = setTimeout(() => {
+      setOriginSearching(true)
+      decisionParticipantApi
+        .originSearch(participantToken, q, ctl.signal)
+        .then(res => {
+          if (!ctl.signal.aborted) setOriginSuggestions(res.suggestions)
+        })
+        .catch(() => {
+          if (!ctl.signal.aborted) setOriginSuggestions([])
+        })
+        .finally(() => {
+          if (!ctl.signal.aborted) setOriginSearching(false)
+        })
+    }, 350)
+    return () => {
+      clearTimeout(t)
+      ctl.abort()
+    }
+  }, [originLabel, originPicked, participantToken])
+
+  const pickOrigin = (s: DecisionOriginSuggestion) => {
+    setOriginLabel(s.name + (s.address ? ` · ${s.address}` : ''))
+    setOriginLat(s.lat.toFixed(6))
+    setOriginLng(s.lng.toFixed(6))
+    setOriginPicked(true)
+    setOriginSuggestions([])
+  }
+
+  const clearOrigin = () => {
+    setOriginPicked(false)
+    setOriginLat('')
+    setOriginLng('')
+    setOriginSuggestions([])
+  }
+
   const useMyLocation = () => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       pos => {
         setOriginLat(pos.coords.latitude.toFixed(6))
         setOriginLng(pos.coords.longitude.toFixed(6))
+        setOriginPicked(true)
         if (!originLabel) setOriginLabel('Vị trí của tôi')
       },
       () => {},
@@ -219,20 +272,42 @@ function ContextForm({
 
       <label className="mb-1 block text-xs font-medium text-content-secondary">Bạn xuất phát từ đâu?</label>
       <div className="mb-3 flex gap-2">
-        <input
-          value={originLabel}
-          onChange={e => setOriginLabel(e.target.value)}
-          placeholder="Ví dụ: Bến Thành"
-          className="flex-1 rounded-lg border border-edge bg-surface px-3 py-2 text-sm"
-        />
+        <div className="relative flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-content-faint" />
+          <input
+            value={originLabel}
+            onChange={e => {
+              setOriginLabel(e.target.value)
+              if (originPicked) clearOrigin()
+            }}
+            placeholder="Ví dụ: Bến Thành"
+            className="w-full rounded-lg border border-edge bg-surface pl-9 pr-3 py-2 text-sm"
+          />
+          {originSearching && <p className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-content-faint">…</p>}
+          {originSuggestions.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-surface-card shadow-lg">
+              {originSuggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => pickOrigin(s)}
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-hover"
+                  >
+                    <span className="block font-medium">{s.name}</span>
+                    {s.address && <span className="block text-xs text-content-faint">{s.address}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <button type="button" onClick={useMyLocation} className="inline-flex items-center gap-1 rounded-lg bg-surface-hover px-3 text-xs">
           <MapPin size={12} /> Vị trí của tôi
         </button>
       </div>
-      <div className="mb-3 flex gap-2">
-        <input value={originLat} onChange={e => setOriginLat(e.target.value)} placeholder="lat" className="w-1/2 rounded-lg border border-edge bg-surface px-3 py-2 text-xs" />
-        <input value={originLng} onChange={e => setOriginLng(e.target.value)} placeholder="lng" className="w-1/2 rounded-lg border border-edge bg-surface px-3 py-2 text-xs" />
-      </div>
+      {originPicked && originLat && (
+        <p className="mb-3 -mt-1 text-xs text-content-faint">Đã chốt điểm xuất phát — gõ lại để đổi.</p>
+      )}
 
       <label className="mb-1 block text-xs font-medium text-content-secondary">Đi tối đa bao nhiêu phút? (không bắt buộc)</label>
       <input value={maxTravel} onChange={e => setMaxTravel(e.target.value)} inputMode="numeric" placeholder="30" className="mb-3 w-full rounded-lg border border-edge bg-surface px-3 py-2 text-sm" />
