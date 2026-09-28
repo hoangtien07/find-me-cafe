@@ -5545,6 +5545,22 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_venue_obs_venue ON venue_observations(venue_id);
       `);
     },
+    // Review-derived freshness for venues: the scraped `status` column proved
+    // unusable (scraper column misalignment — it carries amenity strings and
+    // prices, not open/closed state), so recency of the newest user review is
+    // the stale signal instead. top_reviews_json keeps a tiny excerpt for the
+    // venue card.
+    () => {
+      const hasLastReviewAt = db
+        .prepare("SELECT 1 FROM pragma_table_info('venues') WHERE name = 'last_review_at'")
+        .get();
+      if (!hasLastReviewAt) {
+        db.exec(`
+          ALTER TABLE venues ADD COLUMN last_review_at INTEGER;
+          ALTER TABLE venues ADD COLUMN top_reviews_json TEXT;
+        `);
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

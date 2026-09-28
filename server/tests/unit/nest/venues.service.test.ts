@@ -439,3 +439,61 @@ describe('parser edge branches', () => {
     expect(f.images).toEqual(['u']);
   });
 });
+
+describe('review-derived freshness (status column is unusable)', () => {
+  it('rating 0 stores null, not a fake zero — and the count follows it', () => {
+    const f = fieldsFromGoogleScrape(scrapeRow({ review_rating: 0, review_count: 0 }));
+    expect(f.rating).toBeNull();
+    expect(f.rating_count).toBeNull();
+  });
+
+  it('extractGoogleReviews: newest review sets last_review_at, text reviews become excerpts', () => {
+    const f = fieldsFromGoogleScrape(
+      scrapeRow({
+        user_reviews: [
+          { Name: 'An', Rating: 5, Description: 'Quán đẹp', published_at: '2025-01-01T00:00:00Z' },
+          { Name: 'Bình', Rating: 4, Description: '', published_at: '2026-01-01T00:00:00Z' },
+          { Name: 'Chi', Rating: 3, Description: 'Đồ uống ok', published_at: '2025-06-01T00:00:00Z' },
+        ],
+      }),
+    );
+    expect(f.last_review_at).toBe(Math.floor(Date.parse('2026-01-01T00:00:00Z') / 1000));
+    expect(f.top_reviews).toHaveLength(2);
+    expect(f.top_reviews![0]!.text).toBe('Đồ uống ok');
+  });
+
+  it('merge keeps the newest last_review_at — an older scrape must not clobber it', () => {
+    const newer = scrapeRow({
+      user_reviews: [{ Name: 'A', Rating: 5, Description: 'mới', published_at: '2026-01-01T00:00:00Z' }],
+    });
+    const older = scrapeRow({
+      user_reviews: [{ Name: 'B', Rating: 1, Description: 'cũ', published_at: '2024-01-01T00:00:00Z' }],
+    });
+    const first = svc.ingest(
+      { source: 'google_scrape', externalId: 'pid-1', payload: newer, licenseTag: 'x', fetchedAt: 2000 },
+      fieldsFromGoogleScrape(newer),
+    );
+    svc.ingest(
+      { source: 'trackasia', externalId: 'pid-1', payload: older, licenseTag: 'x', fetchedAt: 3000 },
+      fieldsFromGoogleScrape(older),
+    );
+    const v = svc.findById(first.venueId)!;
+    expect(v.last_review_at).toBe(Math.floor(Date.parse('2026-01-01T00:00:00Z') / 1000));
+    expect(JSON.parse(v.top_reviews_json!)[0].text).toBe('mới');
+  });
+
+  it('search records carry review freshness for the venue card', () => {
+    svc.ingest(
+      { source: 'google_scrape', externalId: 'pid-1', payload: scrapeRow(), licenseTag: 'x', fetchedAt: 1000 },
+      fieldsFromGoogleScrape(
+        scrapeRow({
+          title: 'Cà Phê Test',
+          user_reviews: [{ Name: 'A', Rating: 5, Description: 'ngon', published_at: '2026-02-01T00:00:00Z' }],
+        }),
+      ),
+    );
+    const hits = svc.search('ca phe');
+    expect(hits[0]!.last_review_at).toBe(Math.floor(Date.parse('2026-02-01T00:00:00Z') / 1000));
+    expect((hits[0]!.top_reviews as { text: string }[])[0]!.text).toBe('ngon');
+  });
+});
