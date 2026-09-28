@@ -64,6 +64,38 @@ khi có Google key.
   để giảm latency matrix + tile.
 - PWA/offline core của TREK đã sẵn — participant flow là online-only theo spec.
 
+## Persistence — Litestream → Cloudflare R2 (cho host không có persistent disk)
+
+Render free không có ổ đĩa bền: SQLite (`/app/data/travel.db`) reset mỗi lần
+restart/redeploy. Image đã tích hợp sẵn **Litestream** — stream WAL liên tục
+lên object storage S3-compatible, khôi phục tự động khi boot.
+
+Setup một lần:
+
+1. Tạo **R2 bucket** trên Cloudflare dashboard (free 10GB — không cần card).
+2. Tạo **R2 API Token** (Read & Write, scope đúng bucket vừa tạo) → nhận
+   Access Key ID + Secret Access Key (secret chỉ hiện 1 lần).
+3. Set env trên host:
+
+```env
+LITESTREAM_ENABLED=1
+R2_ACCOUNT_ID=<account id — 32 hex, đầu endpoint>
+R2_BUCKET=<tên bucket>
+R2_ACCESS_KEY_ID=<access key id>
+R2_SECRET_ACCESS_KEY=<secret access key>
+```
+
+4. Deploy/restart. Boot log sẽ restore `travel.db` từ replica nếu file local
+   chưa tồn tại, rồi app chạy bình thường với replication chạy nền.
+
+Ghi chú:
+- Replica nằm tại `s3://<bucket>/trek/travel.db`, retention 7 ngày
+  (`server/scripts/litestream.yml` — đổi `retention` nếu cần).
+- Không set `LITESTREAM_ENABLED` → image chạy y hệt như trước (Litestream
+  inert). Local dev không bị ảnh hưởng.
+- R2-compatible providers khác (Backblaze B2, Tigris...) cũng chạy được —
+  chỉ đổi endpoint trong `litestream.yml`.
+
 ## Deploy Railway (all-in-one)
 
 Một service duy nhất từ `Dockerfile` ở repo root — image đã bundle client +

@@ -25,3 +25,16 @@ services:
         value: vietmap
       - key: VIETMAP_API_KEY
         sync: false
+      # SQLite persistence to Cloudflare R2 (free 10GB) via Litestream — set
+      # LITESTREAM_ENABLED=1 once the four R2_* vars are filled, then data
+      # survives the free instance's ephemeral filesystem.
+      - key: LITESTREAM_ENABLED
+        value: "0"
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false

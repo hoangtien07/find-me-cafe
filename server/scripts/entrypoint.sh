@@ -27,4 +27,18 @@ chown -R node:node /app/data /app/uploads 2>/dev/null || true
 # cd into server/ so tsconfig-paths/register finds tsconfig.json and
 # ../node_modules resolves correctly.
 cd /app/server
+
+# Optional durability for hosts with an ephemeral filesystem (e.g. Render free):
+# with LITESTREAM_ENABLED=1, restore the latest replica if the local DB is
+# missing, then hand the process to `litestream replicate -exec` so the WAL
+# streams to object storage continuously and checkpoints on shutdown. Off by
+# default — no behaviour change for installs without object storage.
+if [ "${LITESTREAM_ENABLED:-}" = "1" ]; then
+  gosu node litestream restore -config /etc/litestream.yml \
+    -if-db-not-exists -if-replica-exists /app/data/travel.db \
+    || echo 'WARN: litestream restore failed — starting from local state'
+  exec gosu node litestream replicate -config /etc/litestream.yml \
+    -exec 'node --require tsconfig-paths/register dist/index.js'
+fi
+
 exec gosu node node --require tsconfig-paths/register dist/index.js
