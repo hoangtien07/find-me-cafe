@@ -9,6 +9,7 @@ import {
   nameSimilarity,
   normalizePhone,
   normalizeVnCategory,
+  normalizeOvertureCategory,
   normalizeVnName,
   parseVnOpenHours,
   parseVnPriceRange,
@@ -401,5 +402,59 @@ export function fieldsFromGoogleScrape(r: Record<string, unknown>): VenueFields 
     plus_code: str(r.plus_code),
     last_review_at: reviews.lastReviewAt,
     top_reviews: reviews.topReviews,
+  };
+}
+
+/** Overture Maps place (GeoJSON feature or flattened record) → canonical
+ *  fields. Overture carries no rating/price/photos, but `opening_hours` is
+ *  already OSM syntax so it lands verbatim, and GERS ids dedupe cleanly.
+ *  License: CDLA-Permissive-2.0 (attribute Overture Maps Foundation). */
+export function fieldsFromOverturePlace(feature: Record<string, unknown>): VenueFields {
+  const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const rec = (v: unknown): Record<string, unknown> | null =>
+    v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  const first = (v: unknown): string | null =>
+    Array.isArray(v) && typeof v[0] === 'string' && v[0].trim() ? v[0].trim() : null;
+
+  const p = rec(feature.properties) ?? feature;
+  const coords = Array.isArray(rec(feature.geometry)?.coordinates)
+    ? (rec(feature.geometry)!.coordinates as unknown[])
+    : null;
+  const names = rec(p.names) ?? {};
+  const brandName = str(rec(rec(p.brand)?.names)?.primary);
+  // 2026 releases renamed the category field: `basic_category` (leaf) +
+  // `taxonomy.{primary,hierarchy,alternates}`; older releases used
+  // `categories.{primary,alternate}` — accept both.
+  const taxonomy = rec(p.taxonomy) ?? {};
+  const cats = rec(p.categories) ?? {};
+  const primaryCat =
+    str(p.basic_category) ?? str(taxonomy.primary) ?? str(cats.primary) ?? null;
+  const catList = [
+    primaryCat,
+    ...(Array.isArray(taxonomy.hierarchy) ? taxonomy.hierarchy : []),
+    ...(Array.isArray(cats.alternate) ? cats.alternate : []),
+    ...(Array.isArray(taxonomy.alternates) ? taxonomy.alternates : []),
+  ].filter((c): c is string => typeof c === 'string');
+  const categoryPrimary =
+    normalizeOvertureCategory(primaryCat) ?? catList.map(normalizeOvertureCategory).find(Boolean) ?? null;
+  const addr = Array.isArray(p.addresses) ? rec(p.addresses[0]) : rec(p.addresses);
+  const address = addr
+    ? [str(addr.freeform), str(addr.locality), str(addr.region)].filter(Boolean).join(', ') || null
+    : null;
+  const hours = str(p.opening_hours);
+
+  return {
+    name: str(names.primary) ?? brandName,
+    lat: coords && typeof coords[1] === 'number' ? coords[1] : num(p.lat ?? p.latitude),
+    lng: coords && typeof coords[0] === 'number' ? coords[0] : num(p.lon ?? p.lng ?? p.longitude),
+    address_freeform: address,
+    categories: catList.length > 0 ? catList : null,
+    category_primary: categoryPrimary,
+    phone: first(p.phones),
+    website: first(p.websites),
+    opening_hours_osm: hours,
+    open_24h: hours === '24/7',
+    description: null,
   };
 }
