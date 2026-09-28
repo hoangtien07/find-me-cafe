@@ -30,6 +30,7 @@ import {
 // ── Photo cache (disk-backed) ────────────────────────────────────────────────
 import { PlacePhotoCacheService } from '../place-photos/place-photo-cache.service';
 import { DatabaseService } from '../database/database.service';
+import { VenuesService } from '../venues/venues.service';
 import { nominatimFetch, type GeoLane } from '../geo/nominatim.client';
 import {
   trekPlacesSearch,
@@ -703,6 +704,7 @@ export class MapsService {
   constructor(
     private readonly database: DatabaseService,
     private readonly photoCache: PlacePhotoCacheService,
+    private readonly venues: VenuesService,
   ) {}
 
   /** Brand id → logo bytes, or null for "asked, has none". Insertion-ordered, so the
@@ -2164,7 +2166,15 @@ export class MapsService {
         }),
       ]);
       osmAnswer = osm;
-      const places = mergeSearchResults(found.map(toPlaceRecord), osm);
+      // The instance's own venue store answers in the same first row: it is
+      // free, local, and carries rating/hours/price the open sources lack.
+      // Local hits merge ahead of both so a café we already know never waits
+      // on a network answer.
+      const local = this.venues.search(query, locationBias, 10).map((r) => ({ ...r, source: 'local-venues' }));
+      const places = mergeSearchResults(
+        mergeSearchResults(local, found.map(toPlaceRecord)),
+        osm,
+      );
       if (places.length > 0) {
         // Names the sources that actually contributed, not the ones that were
         // asked. Either side can come back empty — the index turns down a common
@@ -2502,6 +2512,30 @@ export class MapsService {
           phone: record.phone ?? osmDetails.phone ?? null,
           osm_id: placeId,
           source: 'trek-places',
+        },
+      };
+    }
+
+    // A venue row of our own (`local:<venues.id>`): the details the store
+    // holds — rating, hours, price band, menu photos — come back without a
+    // provider call. OSM hours syntax goes through the same buildOsmDetails
+    // expansion every other source uses so the client sees one shape.
+    if (placeId.startsWith('local:')) {
+      const venue = this.venues.findById(Number(placeId.slice('local:'.length)));
+      if (!venue) return { place: null };
+      const record = this.venues.toSearchRecord(venue);
+      const hours =
+        typeof venue.opening_hours_osm === 'string'
+          ? buildOsmDetails({ opening_hours: venue.opening_hours_osm }, '', '')
+          : null;
+      return {
+        place: {
+          ...record,
+          opening_hours: hours?.opening_hours ?? null,
+          open_now: hours?.open_now ?? null,
+          opening_periods: hours?.opening_periods ?? null,
+          osm_id: placeId,
+          source: 'local-venues',
         },
       };
     }

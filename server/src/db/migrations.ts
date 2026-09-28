@@ -5472,6 +5472,79 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_decision_votes_session ON decision_votes(decision_session_id);
       `);
     },
+    // Proprietary venue database: every place ever fetched from a third party
+    // is stored once (venue_observations, append-only with provenance and
+    // license) and merged into one canonical venues row. The canonical table
+    // feeds the places-search seam and the decision snapshot, so repeated
+    // candidate pins cost nothing and provider calls only fill gaps.
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS venues (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          name_normalized TEXT NOT NULL,
+          lat REAL NOT NULL,
+          lng REAL NOT NULL,
+          geohash6 TEXT NOT NULL,
+          address_freeform TEXT,
+          address_ward TEXT,
+          address_district TEXT,
+          address_city TEXT,
+          address_country TEXT DEFAULT 'VN',
+          categories_json TEXT,
+          category_primary TEXT,
+          brand TEXT,
+          confidence REAL,
+          phone TEXT,
+          website TEXT,
+          email TEXT,
+          socials_json TEXT,
+          rating REAL,
+          rating_count INTEGER,
+          price_raw TEXT,
+          price_min_vnd INTEGER,
+          price_max_vnd INTEGER,
+          price_band TEXT,
+          opening_hours_osm TEXT,
+          open_24h INTEGER DEFAULT 0,
+          amenities_json TEXT,
+          images_json TEXT,
+          menu_images_json TEXT,
+          thumbnail TEXT,
+          streetview_thumb TEXT,
+          popular_times_json TEXT,
+          description TEXT,
+          plus_code TEXT,
+          fetched_at INTEGER NOT NULL,
+          stale_at INTEGER,
+          created_at INTEGER DEFAULT (unixepoch()),
+          updated_at INTEGER DEFAULT (unixepoch())
+        );
+        CREATE INDEX IF NOT EXISTS idx_venues_geo ON venues(geohash6);
+        CREATE INDEX IF NOT EXISTS idx_venues_category ON venues(category_primary);
+        -- Standalone FTS index (no content=): external-content tables reject
+        -- plain DELETE, and rows here are small enough that duplicating the
+        -- three searchable columns beats juggling 'delete' rowsets.
+        CREATE VIRTUAL TABLE IF NOT EXISTS venues_fts USING fts5(
+          name_normalized, address_freeform, categories_json
+        );
+
+        CREATE TABLE IF NOT EXISTS venue_observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          venue_id INTEGER REFERENCES venues(id) ON DELETE SET NULL,
+          source TEXT NOT NULL,
+          external_id TEXT NOT NULL,
+          external_refs_json TEXT,
+          payload_json TEXT NOT NULL,
+          license_tag TEXT NOT NULL,
+          fetched_at INTEGER NOT NULL,
+          created_at INTEGER DEFAULT (unixepoch()),
+          UNIQUE(source, external_id, fetched_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_venue_obs_extid ON venue_observations(source, external_id);
+        CREATE INDEX IF NOT EXISTS idx_venue_obs_venue ON venue_observations(venue_id);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

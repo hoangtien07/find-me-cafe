@@ -3,6 +3,8 @@ import Database from 'better-sqlite3';
 import { DecisionService } from '../../../src/nest/decision/decision.service';
 import { DecisionTelemetryService } from '../../../src/nest/decision/decision-telemetry.service';
 import { DatabaseService } from '../../../src/nest/database/database.service';
+import { VenuesService } from '../../../src/nest/venues/venues.service';
+import { VenuesRepository } from '../../../src/nest/venues/venues.repository';
 import type { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 import { ValidationError, NotFoundError } from '../../../src/nest/common/domain-errors';
 import { createTestDb, resetTestDb } from '../../helpers/test-db';
@@ -22,7 +24,7 @@ beforeEach(() => {
   broadcast.mockClear();
   const realtime = { broadcast } as unknown as RealtimeService;
   const db = new DatabaseService(testDb);
-  svc = new DecisionService(db, realtime, new DecisionTelemetryService(db));
+  svc = new DecisionService(db, realtime, new DecisionTelemetryService(db), new VenuesService(new VenuesRepository(db)));
 });
 
 describe('DecisionService', () => {

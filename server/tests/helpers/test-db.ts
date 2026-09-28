@@ -133,6 +133,11 @@ const RESET_TABLES = [
   'app_settings',
   'webauthn_challenges',
   'webauthn_credentials',
+  // Proprietary venues store — venue_observations first (FK child of venues),
+  // venues_fts is an external-content index so its rows need deleting too.
+  'venue_observations',
+  'venues_fts',
+  'venues',
   'users',
 ];
 

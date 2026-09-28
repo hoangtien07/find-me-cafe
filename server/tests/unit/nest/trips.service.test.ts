@@ -89,6 +89,7 @@ import path from 'path';
 import { notificationsStub } from '../../helpers/notifications';
 import { EphemeralTokenService } from '../../../src/nest/auth/ephemeral-token.service';
 import { SettingsService } from '../../../src/nest/settings/settings.service';
+import { venuesStub } from '../../helpers/venues-stub';
 
 // Real sibling services over the same in-memory DB — updateTrip's date-shift
 // resyncs and the summary/bundle aggregation run their actual SQL.
@@ -108,7 +109,7 @@ const placesSvc = new PlacesService(
   dbs(),
   new PermissionsService(dbs()),
   new RealtimeService(),
-  new MapsService(dbs(), photoCache),
+  new MapsService(dbs(), photoCache, venuesStub()),
   new QueryHelpersService(dbs()),
   new UnsplashService(dbs(), new RuntimeEnvService(), coversFx.storage),
   photoCache,
