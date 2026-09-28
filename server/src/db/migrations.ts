@@ -5522,9 +5522,11 @@ function runMigrations(db: Database.Database): void {
         );
         CREATE INDEX IF NOT EXISTS idx_venues_geo ON venues(geohash6);
         CREATE INDEX IF NOT EXISTS idx_venues_category ON venues(category_primary);
+        -- Standalone FTS index (no content=): external-content tables reject
+        -- plain DELETE, and rows here are small enough that duplicating the
+        -- three searchable columns beats juggling 'delete' rowsets.
         CREATE VIRTUAL TABLE IF NOT EXISTS venues_fts USING fts5(
-          name_normalized, address_freeform, categories_json,
-          content='venues', content_rowid='id'
+          name_normalized, address_freeform, categories_json
         );
 
         CREATE TABLE IF NOT EXISTS venue_observations (

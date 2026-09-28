@@ -278,3 +278,164 @@ describe('venueToFields round-trip', () => {
     expect(fields.open_24h).toBe(false);
   });
 });
+
+// ── merge semantics + remaining branches ────────────────────────────────────
+
+describe('merge semantics', () => {
+  it('null-fill contributes new columns; freshness fields refresh on newer pulls', () => {
+    const first = svc.ingest(
+      { source: 'a', externalId: 'x-1', payload: {}, licenseTag: 'x', fetchedAt: 1000 },
+      { name: 'Cafe X', lat: HN.lat, lng: HN.lng, rating: 4.0 },
+    );
+    const second = svc.ingest(
+      { source: 'b', externalId: 'x-1', payload: {}, licenseTag: 'x', fetchedAt: 2000 },
+      {
+        name: 'Cafe X', lat: HN.lat, lng: HN.lng,
+        rating: 4.6, rating_count: 88, price_band: 'LOW', price_min_vnd: 15_000, price_max_vnd: 40_000,
+        price_raw: '15-40k', opening_hours_osm: 'Mo-Su 07:00-22:00', open_24h: false,
+        phone: '0902222333', website: 'https://x.example', email: 'hi@x.example', socials: ['https://fb/x'],
+        brand: 'X', confidence: 0.9, address_ward: 'P. Test', address_district: 'Q. Test',
+        address_city: 'Hà Nội', categories: ['Quán cà phê'], category_primary: 'cafe',
+        amenities: { wifi: true }, images: ['https://img/1'], menu_images: ['https://img/menu'],
+        thumbnail: 'https://img/thumb', streetview_thumb: 'https://sv/thumb',
+        popular_times: { Monday: [] }, description: 'nice', plus_code: 'ABC+12',
+      },
+    );
+    expect(second.venueId).toBe(first.venueId);
+    const v = svc.findById(first.venueId)!;
+    expect(v.rating).toBe(4.6);              // freshness overwrites
+    expect(v.phone).toBe('0902222333');      // null-fill contributes
+    expect(v.amenities_json).toContain('wifi');
+    expect(v.menu_images_json).toContain('menu');
+    expect(v.plus_code).toBe('ABC+12');
+    expect(v.categories_json).toContain('Quán cà phê');
+    // Name change on merge resyncs the FTS row.
+    expect(svc.search('cafe x').length).toBeGreaterThan(0);
+  });
+
+  it('stale_at is only set when freshness-bearing fields were seen', () => {
+    const rich = svc.ingest(
+      { source: 'a', externalId: 'x-2', payload: {}, licenseTag: 'x', fetchedAt: 1000 },
+      { name: 'Rich', lat: HN.lat, lng: HN.lng, rating: 4 },
+    );
+    const bare = svc.ingest(
+      { source: 'a', externalId: 'x-3', payload: {}, licenseTag: 'x', fetchedAt: 1000 },
+      { name: 'Bare', lat: HN.lat + 0.002, lng: HN.lng + 0.002 },
+    );
+    expect(svc.findById(rich.venueId)!.stale_at).toBe(1000 + 90 * 24 * 3600 * 1000);
+    expect(svc.findById(bare.venueId)!.stale_at).toBeNull();
+  });
+
+  it('an older pull does not clobber freshness fields', () => {
+    const first = svc.ingest(
+      { source: 'a', externalId: 'x-4', payload: {}, licenseTag: 'x', fetchedAt: 2000 },
+      { name: 'Old Fresh', lat: HN.lat, lng: HN.lng, rating: 4.8 },
+    );
+    svc.ingest(
+      { source: 'b', externalId: 'x-4', payload: {}, licenseTag: 'x', fetchedAt: 1000 },
+      { name: 'Old Fresh', lat: HN.lat, lng: HN.lng, rating: 1.0 },
+    );
+    expect(svc.findById(first.venueId)!.rating).toBe(4.8);
+  });
+});
+
+describe('matching — phone + weak geo_name tiers', () => {
+  it('same phone in the same cell joins even with a different name', () => {
+    const first = svc.ingest(
+      { source: 'a', externalId: 'p-1', payload: {}, licenseTag: 'x', fetchedAt: 1000 },
+      { name: 'Totally Different', lat: HN.lat, lng: HN.lng, phone: '0901234567' },
+    );
+    const res = svc.ingest(
+      { source: 'b', externalId: 'p-2', payload: {}, licenseTag: 'x', fetchedAt: 1500 },
+      { name: 'Quán Không Giống', lat: HN.lat + 0.0001, lng: HN.lng, phone: '+84 901 234 567' },
+    );
+    expect(res.venueId).toBe(first.venueId);
+    expect(res.matched).toBe('phone');
+  });
+
+  it('weak name similarity needs a shared category to merge', () => {
+    const first = svc.ingest(
+      { source: 'a', externalId: 'g-1', payload: {}, licenseTag: 'x', fetchedAt: 1000 },
+      { name: 'Cafe Alpha One', lat: HN.lat, lng: HN.lng, category_primary: 'cafe' },
+    );
+    const weak = svc.ingest(
+      { source: 'b', externalId: 'g-2', payload: {}, licenseTag: 'x', fetchedAt: 1500 },
+      { name: 'Cafe Alpha Bakery', lat: HN.lat + 0.0001, lng: HN.lng, category_primary: 'cafe' },
+    );
+    expect(weak.venueId).toBe(first.venueId);
+    expect(weak.matched).toBe('geo_name');
+
+    const noCat = svc.ingest(
+      { source: 'b', externalId: 'g-3', payload: {}, licenseTag: 'x', fetchedAt: 1600 },
+      { name: 'Cafe Delta Bakery', lat: HN.lat + 0.0002, lng: HN.lng, category_primary: 'restaurant' },
+    );
+    expect(noCat.matched).toBe('new');
+  });
+
+  it('enrichForCandidate resolves via phone and arbitrary provider ids', () => {
+    svc.ingest(
+      { source: 'google_scrape', externalId: 'pid-1', payload: scrapeRow(), licenseTag: 'x', fetchedAt: 1000 },
+      fieldsFromGoogleScrape(scrapeRow()),
+    );
+    expect(svc.enrichForCandidate({ google_place_id: 'pid-1' })!.name).toBe('Cafe Test');
+    expect(
+      svc.enrichForCandidate({ vietmap_ref_id: 'unmatched', name: 'Cafe Test', lat: HN.lat, lng: HN.lng, phone: '0901234567' })!.name,
+    ).toBe('Cafe Test');
+  });
+});
+
+describe('search edge cases', () => {
+  it('empty query yields nothing; radius excludes far hits', () => {
+    svc.ingest({ source: 'a', externalId: 's-1', payload: scrapeRow(), licenseTag: 'x', fetchedAt: 1000 }, fieldsFromGoogleScrape(scrapeRow()));
+    expect(svc.search('')).toEqual([]);
+    const hits = svc.search('cafe', { lat: HN.lat + 0.3, lng: HN.lng + 0.3, radius: 1000 });
+    expect(hits).toEqual([]);
+    expect(svc.count()).toBe(1);
+    expect(svc.findById(0)).toBeNull();
+  });
+});
+
+describe('repository direct paths', () => {
+  it('searchNear lists rows in the cell ring', () => {
+    const repo = new VenuesRepository(new DatabaseService(testDb));
+    svc.ingest({ source: 'a', externalId: 'r-1', payload: scrapeRow(), licenseTag: 'x', fetchedAt: 1000 }, fieldsFromGoogleScrape(scrapeRow()));
+    const cell = geohash6(HN.lat, HN.lng);
+    const near = repo.searchNear(HN.lat, HN.lng, [cell, ...geohashNeighbours(cell)], 10);
+    expect(near).toHaveLength(1);
+    expect(repo.searchNear(HN.lat, HN.lng, [], 10)).toEqual([]);
+  });
+});
+
+describe('parser edge branches', () => {
+  it('open hours: dotted times, 00:00–24:00, mixed days', () => {
+    const out = parseVnOpenHours({ 'Thứ Hai': ['7.30–22.00'], 'Thứ Ba': ['00:00–24:00'], 'Thứ Tư': '07:00–12:00' });
+    expect(out!.osm).toContain('Mo 07:30-22:00');
+    expect(out!.open24h).toBe(true);
+    expect(out!.osm).toContain('We 07:00-12:00');
+  });
+
+  it('price: mixed-unit range "1-100.000 ₫" and single token', () => {
+    expect(parseVnPriceRange('1-100.000 ₫')).toEqual({ minVnd: 1_000, maxVnd: 100_000, band: 'MEDIUM' });
+    expect(parseVnPriceRange('75n')).toEqual({ minVnd: 75_000, maxVnd: 75_000, band: 'MEDIUM' });
+  });
+
+  it('about: guards skip non-objects, disabled and unmapped options', () => {
+    const out = aboutToAmenities([
+      'garbage',
+      { name: 'x', options: 'not-an-array' },
+      { name: 'y', options: [null, { name: 42, enabled: true }, { name: 'Wi-Fi', enabled: false }, { name: 'Không map gì', enabled: true }] },
+    ]);
+    expect(out).toBeNull();
+  });
+
+  it('category: non-string entries are skipped', () => {
+    expect(normalizeVnCategory([42, null, 'Trà sữa'])).toBe('tra_sua');
+    expect(normalizeVnCategory('not-array')).toBeNull();
+  });
+
+  it('scrape extractor: single category string and non-object images', () => {
+    const f = fieldsFromGoogleScrape({ title: 'T', latitude: 1, longitude: 2, category: 'Quán cà phê', images: ['bare', { image: 'u' }] });
+    expect(f.categories).toEqual(['Quán cà phê']);
+    expect(f.images).toEqual(['u']);
+  });
+});

@@ -138,6 +138,10 @@ export default defineConfig({
         'src/nest/trip-membership/**/*.ts': { statements: 99, branches: 86, functions: 99, lines: 99 },
         'src/nest/trip-members/**/*.ts': { statements: 95, branches: 91, functions: 99, lines: 95 },
         'src/nest/trip-read-model/**/*.ts': { statements: 97, branches: 96, functions: 99, lines: 97 },
+        // New domain in this change. Measured over its own suite at
+        // 95.4/87.1/98.5/98.2 and pinned under that, per the new-domain
+        // convention above — regenerate after a full run.
+        'src/nest/venues/**/*.ts': { statements: 90, branches: 80, functions: 95, lines: 95 },
         'src/nest/trips/**/*.ts': { statements: 95, branches: 86, functions: 95, lines: 96 },
         'src/nest/unsplash/**/*.ts': { statements: 99, branches: 88, functions: 99, lines: 99 },
         'src/nest/vacay/**/*.ts': { statements: 82, branches: 66, functions: 90, lines: 86 },
