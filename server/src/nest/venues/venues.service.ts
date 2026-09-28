@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { VenuesRepository } from './venues.repository';
 import {
   aboutToAmenities,
+  extractGoogleReviews,
   geohash6,
   geohashNeighbours,
   haversineMetres,
@@ -149,6 +150,18 @@ export class VenuesService {
       if (fields.price_band !== undefined) out.price_band = fields.price_band;
       if (fields.price_raw !== undefined) out.price_raw = fields.price_raw;
     }
+    // Review freshness: keep the newest last_review_at seen, and the excerpt
+    // that came with it — an older scrape must not overwrite a newer review.
+    if (fields.last_review_at !== undefined) {
+      const incoming = fields.last_review_at ?? 0;
+      const existing = row.last_review_at ?? 0;
+      if (incoming > existing) {
+        out.last_review_at = fields.last_review_at;
+        if (fields.top_reviews !== undefined) out.top_reviews = fields.top_reviews;
+      }
+    } else if (fields.top_reviews !== undefined && row.top_reviews_json === null) {
+      out.top_reviews = fields.top_reviews;
+    }
     fill('amenities', row.amenities_json);
     fill('images', row.images_json);
     fill('menu_images', row.menu_images_json);
@@ -224,6 +237,10 @@ export class VenuesService {
       menu_images: v.menu_images_json ? JSON.parse(v.menu_images_json) : null,
       amenities: v.amenities_json ? JSON.parse(v.amenities_json) : null,
       description: v.description,
+      // Review-derived staleness signal + excerpts for the venue card — the
+      // scraped `status` column is garbage, newest-review recency is not.
+      last_review_at: v.last_review_at,
+      top_reviews: v.top_reviews_json ? JSON.parse(v.top_reviews_json) : null,
       source: 'local-venues',
     };
   }
@@ -348,6 +365,11 @@ export function fieldsFromGoogleScrape(r: Record<string, unknown>): VenueFields 
   const isStreetview = thumbnail !== null && thumbnail.includes('streetviewpixels');
   // The same photo URL serves any size — callers rewrite the =wXX-hYY suffix.
   // Thumbnails that are Street View panoramas are not venue photos.
+  // review_rating=0 means "no rating yet" (Google floors at 1) — store null,
+  // not a fake zero that would poison rating sorts.
+  const rawRating = num(r.review_rating);
+  const rating = rawRating !== null && rawRating > 0 ? rawRating : null;
+  const reviews = extractGoogleReviews(r.user_reviews);
 
   return {
     name: str(r.title),
@@ -358,8 +380,8 @@ export function fieldsFromGoogleScrape(r: Record<string, unknown>): VenueFields 
     category_primary: normalizeVnCategory(categories),
     phone: str(r.phone),
     website: str(r.web_site),
-    rating: num(r.review_rating),
-    rating_count: num(r.review_count),
+    rating,
+    rating_count: rating !== null ? num(r.review_count) : null,
     price_raw: str(r.price_range),
     price_min_vnd: price?.minVnd ?? null,
     price_max_vnd: price?.maxVnd ?? null,
@@ -377,5 +399,7 @@ export function fieldsFromGoogleScrape(r: Record<string, unknown>): VenueFields 
         : null,
     description: str(r.description),
     plus_code: str(r.plus_code),
+    last_review_at: reviews.lastReviewAt,
+    top_reviews: reviews.topReviews,
   };
 }

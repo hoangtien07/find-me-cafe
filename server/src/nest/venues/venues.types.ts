@@ -49,6 +49,8 @@ export interface VenueRow {
   popular_times_json: string | null;
   description: string | null;
   plus_code: string | null;
+  last_review_at: number | null;
+  top_reviews_json: string | null;
   fetched_at: number;
   stale_at: number | null;
   created_at: number;
@@ -90,6 +92,19 @@ export interface VenueFields {
   popular_times?: Record<string, unknown> | null;
   description?: string | null;
   plus_code?: string | null;
+  /** Unix seconds of the newest user review — the stale signal for a venue
+   *  whose opening state can't otherwise be trusted. */
+  last_review_at?: number | null;
+  /** Small excerpt of recent reviews for the venue card. */
+  top_reviews?: VenueTopReview[] | null;
+}
+
+/** One review excerpt carried on the canonical row. */
+export interface VenueTopReview {
+  name: string | null;
+  rating: number | null;
+  text: string | null;
+  published_at: string | null;
 }
 
 /** One observed record, pre-persistence. */

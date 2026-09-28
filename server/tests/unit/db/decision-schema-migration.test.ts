@@ -142,12 +142,13 @@ describe('decision schema migration', () => {
     // Simulate an install whose table was created before revoked_at existed:
     // old column set, version rewound to just before the backfill migration.
     db.exec('ALTER TABLE decision_participant_sessions DROP COLUMN revoked_at');
-    // Rewind far enough for the backfill migration to replay: four entries
-    // were appended after its slot (travel_mode, venue_context, votes and the
-    // venues store), so it sits five back from the tail. Bump this offset
-    // when appending further migrations — every entry after the backfill is
-    // guarded, so replaying them is a no-op on a current DB.
-    db.prepare('UPDATE schema_version SET version = ?').run(version - 5);
+    // Rewind far enough for the backfill migration to replay: five entries
+    // were appended after its slot (travel_mode, venue_context, votes, the
+    // venues store and its review-freshness columns), so it sits six back
+    // from the tail. Bump this offset when appending further migrations —
+    // every entry after the backfill is guarded, so replaying them is a
+    // no-op on a current DB.
+    db.prepare('UPDATE schema_version SET version = ?').run(version - 6);
     runMigrations(db);
     expect(cols(db, 'decision_participant_sessions').has('revoked_at')).toBe(true);
     expect(db.prepare('SELECT version FROM schema_version').get()).toEqual({ version });

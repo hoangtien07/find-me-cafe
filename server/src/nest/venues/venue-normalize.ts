@@ -340,3 +340,43 @@ export function normalizePhone(phone: unknown): string | null {
   if (digits.length < 9) return null;
   return `+${digits.startsWith('84') ? digits : `84${digits.replace(/^0/, '')}`}`;
 }
+
+/** Extract review freshness + excerpts from a Google-scrape `user_reviews`
+ * array. The `status` column in these rows is unusable (scraper misalignment
+ * fills it with amenity strings and prices), so the newest review's publish
+ * time is the venue's staleness signal and up to three text-bearing reviews
+ * ride along for the venue card. */
+export function extractGoogleReviews(
+  userReviews: unknown,
+): { lastReviewAt: number | null; topReviews: { name: string | null; rating: number | null; text: string | null; published_at: string | null }[] | null } {
+  if (!Array.isArray(userReviews)) return { lastReviewAt: null, topReviews: null };
+  const reviews = userReviews
+    .filter((u): u is Record<string, unknown> => typeof u === 'object' && u !== null)
+    .map((u) => {
+      const micros = typeof u.posted_at_unix_micros === 'number' ? u.posted_at_unix_micros : null;
+      const iso = typeof u.published_at === 'string' ? u.published_at : null;
+      const atSec = micros !== null ? Math.floor(micros / 1_000_000) : iso ? Math.floor(Date.parse(iso) / 1000) : null;
+      return {
+        name: typeof u.Name === 'string' && u.Name.trim() ? u.Name.trim() : null,
+        rating: typeof u.Rating === 'number' && Number.isFinite(u.Rating) && u.Rating > 0 ? u.Rating : null,
+        text:
+          typeof u.Description === 'string' && u.Description.trim()
+            ? u.Description.trim().slice(0, 300)
+            : null,
+        published_at: iso,
+        atSec,
+      };
+    })
+    .filter((u) => u.atSec !== null || u.text !== null || u.rating !== null);
+  if (reviews.length === 0) return { lastReviewAt: null, topReviews: null };
+  const lastReviewAt = reviews.reduce<number | null>(
+    (acc, u) => (u.atSec !== null && (acc === null || u.atSec > acc) ? u.atSec : acc),
+    null,
+  );
+  const top = [...reviews]
+    .sort((a, b) => (b.atSec ?? 0) - (a.atSec ?? 0))
+    .filter((u) => u.text !== null)
+    .slice(0, 3)
+    .map(({ name, rating, text, published_at }) => ({ name, rating, text, published_at }));
+  return { lastReviewAt, topReviews: top.length > 0 ? top : null };
+}

@@ -83,8 +83,8 @@ export class VenuesRepository {
          price_raw, price_min_vnd, price_max_vnd, price_band,
          opening_hours_osm, open_24h, amenities_json,
          images_json, menu_images_json, thumbnail, streetview_thumb, popular_times_json,
-         description, plus_code, fetched_at, stale_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         description, plus_code, last_review_at, top_reviews_json, fetched_at, stale_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       fields.name,
       fields.name_normalized,
       fields.lat,
@@ -119,6 +119,8 @@ export class VenuesRepository {
       fields.popular_times ? JSON.stringify(fields.popular_times) : null,
       fields.description ?? null,
       fields.plus_code ?? null,
+      fields.last_review_at ?? null,
+      fields.top_reviews ? JSON.stringify(fields.top_reviews) : null,
       fields.fetched_at,
       fields.stale_at,
     );
@@ -181,6 +183,8 @@ export class VenuesRepository {
     if (fields.popular_times !== undefined) col('popular_times_json', fields.popular_times ? JSON.stringify(fields.popular_times) : null);
     if (fields.description !== undefined) col('description', fields.description);
     if (fields.plus_code !== undefined) col('plus_code', fields.plus_code);
+    if (fields.last_review_at !== undefined) col('last_review_at', fields.last_review_at);
+    if (fields.top_reviews !== undefined) col('top_reviews_json', fields.top_reviews ? JSON.stringify(fields.top_reviews) : null);
     vals.push(id);
     this.db.run(`UPDATE venues SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     // Keep the FTS row in step when searchable text changed.
