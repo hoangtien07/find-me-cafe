@@ -72,6 +72,7 @@ import { PlacePhotoCacheService } from '../../src/nest/place-photos/place-photo-
 import { TrekPhotosRepository } from '../../src/nest/photos/trek-photos.repository';
 import { RuntimeEnvService } from '../../src/nest/app-config/runtime-env.service';
 import { makeStorageFixture } from './storage-fixture';
+import { venuesStub } from './venues-stub';
 
 /**
  * Hand-wired counterpart of the PluginsModule DI graph for no-Nest tests
@@ -110,7 +111,7 @@ export function createPluginRpcHostFactory(dbs: DatabaseService): PluginRpcHostF
   const oauth = new PluginOAuthService(dbs);
   const accommodations = new AccommodationsService(dbs, permissions, realtime, assignments);
   // After it: deleting a place cancels the nights booked at it through this one.
-  const places = new PlacesService(dbs, permissions, realtime, new MapsService(dbs, photoCache), queryHelpers, unsplash, photoCache, journey, generalStorage, accommodations);
+  const places = new PlacesService(dbs, permissions, realtime, new MapsService(dbs, photoCache, venuesStub()), queryHelpers, unsplash, photoCache, journey, generalStorage, accommodations);
   // After accommodations: a hotel booking writes the stay's day stop through it.
   const reservations = new ReservationsService(dbs, permissions, budget, realtime, notificationsStub(), new ReservationsReadRepository(dbs), accommodations);
   const trips = new TripsService(dbs, reservations, days, permissions, budget, vacay, realtime, unsplash, generalStorage, new SettingsService(dbs));

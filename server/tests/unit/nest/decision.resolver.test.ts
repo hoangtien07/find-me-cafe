@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { createTestDb, resetTestDb } from '../../helpers/test-db';
 import { DatabaseService } from '../../../src/nest/database/database.service';
+import { VenuesService } from '../../../src/nest/venues/venues.service';
+import { VenuesRepository } from '../../../src/nest/venues/venues.repository';
 import { DecisionService } from '../../../src/nest/decision/decision.service';
 import { TravelMatrixService } from '../../../src/nest/decision/travel/travel-matrix.service';
 import { MockTravelMatrixProvider } from '../../../src/nest/decision/travel/mock-travel-matrix.provider';
@@ -27,7 +29,7 @@ describe('DecisionResolverService', () => {
     const db = new DatabaseService(testDb);
     const realtime = { broadcast } as unknown as RealtimeService;
     const telemetry = new DecisionTelemetryService(db);
-    decisions = new DecisionService(db, realtime, telemetry);
+    decisions = new DecisionService(db, realtime, telemetry, new VenuesService(new VenuesRepository(db)));
     resolver = new DecisionResolverService(db, realtime, decisions, new TravelMatrixService(db, new MockTravelMatrixProvider()), telemetry);
   });
 

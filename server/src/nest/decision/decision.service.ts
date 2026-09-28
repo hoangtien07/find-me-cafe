@@ -22,7 +22,10 @@ import type {
   UpsertVenueContextRequest,
 } from '@trek/shared';
 import { DECISION_TRAVEL_MODES } from '@trek/shared';
+import type { DecisionCandidateSnapshot } from '@trek/shared';
 import { DatabaseService } from '../database/database.service';
+import { VenuesService } from '../venues/venues.service';
+import { parseOpeningHours } from '../maps/maps.helpers';
 import { RealtimeService } from '../realtime/realtime.service';
 import { DecisionTelemetryService } from './decision-telemetry.service';
 import { ValidationError, NotFoundError } from '../common/domain-errors';
@@ -75,6 +78,7 @@ export class DecisionService {
     private readonly db: DatabaseService,
     private readonly realtime: RealtimeService,
     private readonly telemetry: DecisionTelemetryService,
+    private readonly venues: VenuesService,
   ) {}
 
   /** Create the technical trip + the decision session atomically. */
@@ -662,6 +666,39 @@ export class DecisionService {
       description: place.description ?? null,
       image_url: place.image_url ?? null,
     };
+
+    // The venue store fills what the place row + evidence left null — a café
+    // already ingested carries rating/hours/price that no provider call can
+    // otherwise produce. Only null/empty fields get filled; the host's
+    // evidence and the place row keep precedence.
+    const venueFill = this.venues.enrichForCandidate({
+      google_place_id: snapshot.google_place_id as string | null,
+      osm_id: snapshot.osm_id as string | null,
+      vietmap_ref_id: snapshot.vietmap_ref_id as string | null,
+      name: snapshot.name as string | null,
+      lat: snapshot.lat as number | null,
+      lng: snapshot.lng as number | null,
+      phone: snapshot.phone as string | null,
+    });
+    if (venueFill) {
+      if (snapshot.rating == null && venueFill.rating != null) snapshot.rating = venueFill.rating;
+      if (snapshot.rating_count == null && venueFill.rating_count != null) snapshot.rating_count = venueFill.rating_count;
+      if (snapshot.price == null && venueFill.price_max_vnd != null) {
+        snapshot.price = venueFill.price_max_vnd;
+        snapshot.currency = snapshot.currency ?? 'VND';
+      }
+      if (snapshot.website == null && venueFill.website != null) snapshot.website = venueFill.website;
+      if (snapshot.phone == null && venueFill.phone != null) snapshot.phone = venueFill.phone;
+      if (snapshot.image_url == null && venueFill.thumbnail != null) snapshot.image_url = venueFill.thumbnail;
+      if (snapshot.description == null && venueFill.description != null) snapshot.description = venueFill.description;
+      if (snapshot.opening_periods == null && typeof venueFill.opening_hours_osm === 'string') {
+        const parsed = parseOpeningHours(venueFill.opening_hours_osm);
+        if (parsed.periods.length > 0) {
+          snapshot.opening_periods = parsed.periods as DecisionCandidateSnapshot['opening_periods'];
+          snapshot.open_now = parsed.openNow;
+        }
+      }
+    }
 
     // Provider-id dedup: the same venue can arrive as a different Place row via
     // a second search (or quick-add), and pinning it twice makes the resolver

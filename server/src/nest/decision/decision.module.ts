@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MapsModule } from '../maps/maps.module';
+import { VenuesModule } from '../venues/venues.module';
 import { RateLimitModule } from '../common/rate-limit.module';
 import { DecisionController } from './decision.controller';
 import { DecisionInviteController } from './decision-invite.controller';
@@ -19,7 +20,7 @@ import { DecisionTelemetryService } from './decision-telemetry.service';
  * lifecycle. RealtimeService/DatabaseService come from their global modules.
  */
 @Module({
-  imports: [MapsModule, RateLimitModule],
+  imports: [MapsModule, RateLimitModule, VenuesModule],
   controllers: [DecisionController, DecisionInviteController, DecisionParticipantController],
   providers: [
     DecisionService,

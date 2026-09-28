@@ -67,6 +67,7 @@ import {
 } from '../../../src/nest/maps/providers/vietmap.provider';
 import { isGooglePlaceId } from '../../../src/nest/maps/maps.helpers';
 import type { PlacePhotoCacheService } from '../../../src/nest/place-photos/place-photo-cache.service';
+import { venuesStub } from '../../helpers/venues-stub';
 
 const photoCacheStub = {
   get: vi.fn(() => null),
@@ -78,7 +79,7 @@ const photoCacheStub = {
   serveKey: vi.fn(() => null),
 } as unknown as PlacePhotoCacheService;
 
-const svc = new MapsService(new DatabaseService(db as never), photoCacheStub);
+const svc = new MapsService(new DatabaseService(db as never), photoCacheStub, venuesStub());
 
 /** A provider over a fixed key, which is all these cases need. */
 function provider(): VietmapPlacesProvider {
