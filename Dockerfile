@@ -76,6 +76,17 @@ RUN apt-get update && \
 # it to drop to node.
 COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
 
+# Litestream — streams the SQLite WAL to S3-compatible object storage so the
+# database survives restarts on hosts with ephemeral disks (e.g. Render free).
+# Inert unless LITESTREAM_ENABLED=1 is set at runtime. The asset name maps
+# amd64→x86_64 and arm64→arm64.
+ARG LITESTREAM_VERSION=0.5.17
+RUN wget -qO /tmp/litestream.tar.gz \
+      "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-$(dpkg --print-architecture | sed 's/^amd64$/x86_64/').tar.gz" && \
+    tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin litestream && \
+    rm /tmp/litestream.tar.gz
+COPY server/scripts/litestream.yml /etc/litestream.yml
+
 ENV XDG_CACHE_HOME=/tmp/kf6-cache
 # Prevent Qt from probing for a display in headless containers.
 ENV QT_QPA_PLATFORM=offscreen

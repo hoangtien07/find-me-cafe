@@ -1,0 +1,23 @@
+# Litestream replication — continuous WAL streaming of the SQLite database to
+# S3-compatible object storage (configured for Cloudflare R2, free tier). The
+# entrypoint only activates this file when LITESTREAM_ENABLED=1, so it is inert
+# for every install that does not opt in.
+#
+# R2 credentials come from env vars expanded at litestream startup; nothing
+# secret lives in this file. Required env:
+#   R2_ACCOUNT_ID        — Cloudflare account id (endpoint prefix)
+#   R2_BUCKET            — bucket holding the replicas
+#   R2_ACCESS_KEY_ID     — R2 API token access key
+#   R2_SECRET_ACCESS_KEY — R2 API token secret key
+dbs:
+  - path: /app/data/travel.db
+    replica:
+      # Litestream ≥0.5 auto-detects the r2.cloudflarestorage.com endpoint and
+      # applies signed payloads + conservative multipart concurrency — no
+      # provider-specific flags needed.
+      url: s3://${R2_BUCKET}/trek/travel.db?endpoint=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+      access-key-id: ${R2_ACCESS_KEY_ID}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY}
+      # Keep 7 days of snapshots + WAL — enough to recover a bad deploy or a
+      # corrupted write, without growing the bucket unboundedly.
+      retention: 168h
