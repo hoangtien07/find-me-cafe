@@ -16,7 +16,7 @@ import { createInterface } from 'readline';
 import { db } from '../src/db/database';
 import { DatabaseService } from '../src/nest/database/database.service';
 import { VenuesRepository } from '../src/nest/venues/venues.repository';
-import { VenuesService, fieldsFromGoogleScrape } from '../src/nest/venues/venues.service';
+import { VenuesService, fieldsFromGoogleScrape, fieldsFromOverturePlace } from '../src/nest/venues/venues.service';
 import type { VenueFields } from '../src/nest/venues/venues.types';
 
 const args = process.argv.slice(2);
@@ -27,19 +27,22 @@ const opt = (name: string, dflt: string): string => {
 };
 
 if (!file) {
-  console.error('usage: tsx scripts/ingest-venues-jsonl.ts <file.jsonl> [--source X] [--license Y]');
+  console.error('usage: tsx scripts/ingest-venues-jsonl.ts <file.jsonl> [--source google_scrape|gers] [--license Y]');
   process.exit(1);
 }
 
 const source = opt('source', 'google_scrape');
-const license = opt('license', 'google_scrape_internal');
+const license = opt('license', source === 'gers' ? 'CDLA-Permissive-2.0' : 'google_scrape_internal');
 
 const service = new VenuesService(new VenuesRepository(new DatabaseService(db)));
 
 /** TrackAsia/Google-compat rows differ; extend extractors here as new
- *  sources land. The scraped `raw.jsonl` dialect is the only one today. */
+ *  sources land. `gers` = Overture Maps GeoJSON-seq features. */
 function extract(source: string, row: Record<string, unknown>): VenueFields {
   switch (source) {
+    case 'gers':
+    case 'overture':
+      return fieldsFromOverturePlace(row);
     case 'google_scrape':
     default:
       return fieldsFromGoogleScrape(row);

@@ -330,6 +330,55 @@ export function normalizeVnCategory(categories: unknown): string | null {
   return null;
 }
 
+// ── Overture Maps (GERS) categories → normalized primary ───────────────────
+// Overture primary categories are English snake_case; `*_restaurant` collapses
+// to 'restaurant' below the table.
+
+const OVERTURE_CATEGORY_MAP: Record<string, string> = {
+  cafe: 'cafe',
+  coffee_shop: 'cafe',
+  coffee_roaster: 'cafe',
+  espresso_bar: 'cafe',
+  internet_cafe: 'cafe',
+  cat_cafe: 'cafe',
+  pet_cafe: 'cafe',
+  tea_house: 'tra_sua',
+  tea_shop: 'tra_sua',
+  bubble_tea_shop: 'tra_sua',
+  milk_bar: 'tra_sua',
+  juice_bar: 'juice_bar',
+  juice_shop: 'juice_bar',
+  smoothie_juice_bar: 'juice_bar',
+  dessert_shop: 'dessert',
+  ice_cream_parlor: 'dessert',
+  confectionery: 'dessert',
+  bakery: 'bakery',
+  bar: 'bar',
+  pub: 'bar',
+  cocktail_bar: 'bar',
+  wine_bar: 'bar',
+  sports_bar: 'bar',
+  karaoke_bar: 'bar',
+  night_club: 'bar',
+  hookah_lounge: 'bar',
+  lounge: 'lounge',
+  beer_garden: 'beer_club',
+  brewpub: 'beer_club',
+  beer_hall: 'beer_club',
+};
+
+/** The drink-venue spine the Overture filter keeps — mirrored by
+ *  scripts/overture-to-jsonl.mjs; keep both lists in sync. */
+export const OVERTURE_DRINK_CATEGORIES: ReadonlySet<string> = new Set(Object.keys(OVERTURE_CATEGORY_MAP));
+
+/** Overture primary category → normalized primary; `*_restaurant` collapses. */
+export function normalizeOvertureCategory(cat: unknown): string | null {
+  if (typeof cat !== 'string') return null;
+  if (OVERTURE_CATEGORY_MAP[cat]) return OVERTURE_CATEGORY_MAP[cat];
+  if (cat === 'restaurant' || cat.endsWith('_restaurant')) return 'restaurant';
+  return null;
+}
+
 // ── Snapshot enrichment ────────────────────────────────────────────────────
 
 /** Numeric VN phone normalization for the phone-match signal: digits only,

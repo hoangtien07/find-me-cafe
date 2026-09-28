@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import type Database from 'better-sqlite3';
 import { createTestDb, resetTestDb } from '../../helpers/test-db';
 import { DatabaseService } from '../../../src/nest/database/database.service';
-import { VenuesService, fieldsFromGoogleScrape, venueToFields } from '../../../src/nest/venues/venues.service';
+import { VenuesService, fieldsFromGoogleScrape, fieldsFromOverturePlace, venueToFields } from '../../../src/nest/venues/venues.service';
 import { VenuesRepository } from '../../../src/nest/venues/venues.repository';
 import {
   normalizeVnName,
@@ -495,5 +495,73 @@ describe('review-derived freshness (status column is unusable)', () => {
     const hits = svc.search('ca phe');
     expect(hits[0]!.last_review_at).toBe(Math.floor(Date.parse('2026-02-01T00:00:00Z') / 1000));
     expect((hits[0]!.top_reviews as { text: string }[])[0]!.text).toBe('ngon');
+  });
+});
+
+describe('fieldsFromOverturePlace (GERS spine)', () => {
+  const feature = (over: Record<string, unknown> = {}) => ({
+    id: '08f2a1b2c3d4e5f6a7b8c9d0e1f2a3b4',
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [105.851, 21.028] },
+    properties: {
+      names: { primary: 'Cà Phê Overture' },
+      categories: { primary: 'coffee_shop', alternate: ['restaurant'] },
+      addresses: [{ freeform: '12 Phố Huế', locality: 'Hai Bà Trưng', region: 'Hà Nội', country: 'VN' }],
+      phones: ['+84981234567'],
+      websites: ['https://caphe.example'],
+      opening_hours: 'Mo-Su 07:00-22:00',
+      confidence: 0.92,
+      sources: [{ dataset: 'meta', record_id: 'x' }],
+      ...over,
+    },
+  });
+
+  it('maps a GeoJSON feature to venue fields, OSM hours verbatim', () => {
+    const f = fieldsFromOverturePlace(feature());
+    expect(f.name).toBe('Cà Phê Overture');
+    expect(f.lat).toBeCloseTo(21.028);
+    expect(f.lng).toBeCloseTo(105.851);
+    expect(f.category_primary).toBe('cafe');
+    expect(f.phone).toBe('+84981234567');
+    expect(f.website).toBe('https://caphe.example');
+    expect(f.address_freeform).toBe('12 Phố Huế, Hai Bà Trưng, Hà Nội');
+    expect(f.opening_hours_osm).toBe('Mo-Su 07:00-22:00');
+    expect(f.open_24h).toBe(false);
+  });
+
+  it('2026 schema: basic_category + taxonomy hierarchy resolve the category', () => {
+    const f = fieldsFromOverturePlace(
+      feature({
+        names: {},
+        brand: { names: { primary: 'Highlands Coffee' } },
+        categories: undefined,
+        basic_category: 'unknown_thing',
+        taxonomy: {
+          primary: 'unknown_thing',
+          hierarchy: ['food_and_drink', 'alcoholic_beverage_venue', 'beer_garden'],
+          alternates: null,
+        },
+        opening_hours: '24/7',
+      }),
+    );
+    expect(f.name).toBe('Highlands Coffee');
+    expect(f.category_primary).toBe('beer_club');
+    expect(f.open_24h).toBe(true);
+  });
+
+  it('*_restaurant collapses to restaurant; gers ids dedupe on re-ingest', () => {
+    const f = fieldsFromOverturePlace(feature({ categories: { primary: 'vietnamese_restaurant' } }));
+    expect(f.category_primary).toBe('restaurant');
+    const feat = feature();
+    const first = svc.ingest(
+      { source: 'gers', externalId: String(feat.id), payload: feat, licenseTag: 'CDLA-Permissive-2.0', fetchedAt: 1000 },
+      f,
+    );
+    const second = svc.ingest(
+      { source: 'gers', externalId: String(feat.id), payload: feat, licenseTag: 'CDLA-Permissive-2.0', fetchedAt: 2000 },
+      f,
+    );
+    expect(second.venueId).toBe(first.venueId);
+    expect(second.matched).toBe('external_id');
   });
 });
